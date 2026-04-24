@@ -80,8 +80,8 @@ def _load_ref_data() -> tuple[list[dict], list[dict], list[dict]]:
     Batches are sized according to pipeline_hyperparams.yaml (WINDOW_HOURS).
     Called after df_to_data_points is defined below.
     """
-    fit_df = pd.read_parquet(DATA_DIR / f"vibe_data_fit_{_REF_SCENARIO}.parquet")
-    pred_df = pd.read_parquet(DATA_DIR / f"vibe_data_pred_{_REF_SCENARIO}.parquet")
+    fit_df = pd.read_parquet(DATA_DIR / f"sensor_data_fit_{_REF_SCENARIO}.parquet")
+    pred_df = pd.read_parquet(DATA_DIR / f"sensor_data_pred_{_REF_SCENARIO}.parquet")
 
     window = timedelta(hours=WINDOW_HOURS)
 
@@ -170,8 +170,8 @@ def scenario_alerts() -> dict[int, list[str]]:
 
 def load_scenario(n: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return (fit_df, pred_df) for scenario *n*."""
-    fit = pd.read_parquet(DATA_DIR / f"vibe_data_fit_{n}.parquet")
-    pred = pd.read_parquet(DATA_DIR / f"vibe_data_pred_{n}.parquet")
+    fit = pd.read_parquet(DATA_DIR / f"sensor_data_fit_{n}.parquet")
+    pred = pd.read_parquet(DATA_DIR / f"sensor_data_pred_{n}.parquet")
     return fit, pred
 
 

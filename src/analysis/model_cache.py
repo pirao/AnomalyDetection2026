@@ -157,7 +157,7 @@ def _fit_all_scenarios(
 
     models: dict[int, object] = {}
     for sid in scenario_ids:
-        fit_df = pd.read_parquet(data_dir / f"vibe_data_fit_{sid}.parquet")
+        fit_df = pd.read_parquet(data_dir / f"sensor_data_fit_{sid}.parquet")
         fit_df["sampled_at"] = pd.to_datetime(
             fit_df["sampled_at"],
             errors="coerce",
@@ -188,7 +188,7 @@ def fit_and_save(
     Parameters
     ----------
     data_dir :
-        Directory containing ``vibe_data_fit_{id}.parquet`` files.
+        Directory containing ``sensor_data_fit_{id}.parquet`` files.
     scenario_ids :
         Scenario IDs to fit (default 1..29).
     hyperparams_path :

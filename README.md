@@ -57,8 +57,8 @@ The public repo ships without private benchmark files. To run the full private w
 
 Expected private inputs:
 
-- `data/vibe_data_fit_{1..29}.parquet`
-- `data/vibe_data_pred_{1..29}.parquet`
+- `data/sensor_data_fit_{1..29}.parquet`
+- `data/sensor_data_pred_{1..29}.parquet`
 - `labels/incidents.yaml`
 
 If these files are missing, the private benchmark tests cannot run. Restore the private files locally before running the benchmark command.
