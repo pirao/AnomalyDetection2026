@@ -268,7 +268,11 @@ def fit_and_save(
         json.dump({"latest_version": max(latest_version, next_version)}, f, indent=2)
     os.replace(str(tmp_meta), str(meta_path))
 
-    _log(f"Saved to {final_dir}  ({len(models)} models)")
+    try:
+        display_dir = final_dir.relative_to(_REPO_ROOT).as_posix()
+    except ValueError:
+        display_dir = final_dir.name
+    _log(f"Saved to {display_dir}  ({len(models)} models)")
     return next_version
 
 
