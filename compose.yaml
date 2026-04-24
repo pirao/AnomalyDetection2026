@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+
+  # make test - Dockerized full pytest helper
+  test:
+    build: .
+    command: uv run pytest src/tests -v
+    profiles:
+      - test
+
+  # make inference-test - main private benchmark gate and source of reported metrics
+  inference-test:
+    build: .
+    command: uv run pytest src/tests/test_evaluation.py -v --tb=short
+    profiles:
+      - inference-test

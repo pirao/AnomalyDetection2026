@@ -1,0 +1,95 @@
+# Alert engine hyperparameters.
+#
+# Alert ownership priority
+# ------------------------
+# 0. single-channel ownership
+# 1. group-3 ownership
+# 2. group-6 ownership
+#
+# Once a higher-priority owner confirms, lower-priority opens and re-alerts
+# are suppressed for that episode until the higher-priority owner resets.
+#
+# Group-3 now includes:
+# - canonical velocity triplet:  vel_rms_x + vel_rms_y + vel_rms_z
+# - canonical accel triplet:     accel_rms_x + accel_rms_y + accel_rms_z
+# - mixed 3-to-5 channel sets:   any other active set of size 3..5 that is
+#   not one of the canonical triplets and not the full 6-channel group-6 case.
+#
+# Detection itself remains occupancy-based:
+#   occupancy_score = max(vel_occupancy, accel_occupancy) in [0, 1]
+
+# Individual alert ownership mode
+# -------------------------------
+# exclusive:
+#   current behavior — one individual channel owns the episode until reset
+#   or grouped ownership takes over.
+# shared:
+#   multiple confirmed individual channels may open independently during the
+#   same episode before grouped ownership takes over.
+individual_alert_mode: exclusive
+
+# Individual alert open / re-alert
+# --------------------------------
+# confirmation_count / confirmation_window:
+#   persistence gate for a new individual open. When confirmed, the reporting
+#   timestamp is anchored to the centered batch in the lookback window.
+# relative_threshold:
+#   re-alert when a watched channel worsens by this relative factor.
+# min_channel_delta:
+#   optional absolute residual guard on the same watched channel.
+confirmation_count: 3
+confirmation_window: 4
+relative_threshold: 1.5
+min_channel_delta: 0.0
+
+# Individual reset / cooldown
+# ---------------------------
+# min_cooldown_windows:
+#   minimum windows between individual alerts on an already-open channel.
+# reset_batches_below_zero:
+#   consecutive batches with residual < 0 needed to close individual ownership.
+# inter_alert_cooldown_windows:
+#   global mute on fresh individual opens after any individual alert, useful
+#   while grouped ownership is still forming.
+min_cooldown_windows: 4
+reset_batches_below_zero: 18 # 12
+inter_alert_cooldown_windows: 6
+
+# Grouped confirmation / grouped re-alert / grouped reset
+# -------------------------------------------------------
+# group_confirmation_count / group_confirmation_window:
+#   persistence gate for any group-3 or group-6 open.
+# group_relative_threshold:
+#   re-alert when grouped severity worsens by this relative factor.
+# group_min_cooldown_windows:
+#   minimum windows between grouped alerts.
+# group_reset_batches_below_zero:
+#   grouped ownership closes after a strict majority of grouped channels stay
+#   below zero for this many consecutive batches.
+group_confirmation_count: 2
+group_confirmation_window: 3
+group_relative_threshold: 2.0
+group_min_cooldown_windows: 6
+group_reset_batches_below_zero: 12 
+
+# Ownership handoff / escalation suppression
+# ------------------------------------------
+# channel_to_group_holdback_windows:
+#   how long to hold a single-channel event while a group-3 candidate is
+#   forming before releasing it if grouped ownership never confirms.
+# group3_to_group6_holdback_windows:
+#   how long to hold a group-3 event while group-6 escalation is forming.
+# suppress_lower_priority_during_group_candidate:
+#   if true, group-3 formation suppresses single-channel opens and re-alerts.
+# suppress_group3_during_group6_candidate:
+#   if true, group-6 formation suppresses all group-3 flags, including re-alerts.
+channel_to_group_holdback_windows: 5
+group3_to_group6_holdback_windows: 8
+suppress_lower_priority_during_group_candidate: true
+suppress_group3_during_group6_candidate: true
+
+# Group-6 enablement
+# ------------------
+# When false, escalation stops at group-3 and replay plots hide group-6 unless
+# older cached data still contains it.
+enable_group6_alerts: false

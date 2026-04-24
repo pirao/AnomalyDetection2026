@@ -1,0 +1,55 @@
+# Residual-space sigmoid anomaly detection hyperparameters.
+#
+# d_norm is produced by fit_norm_baselines / apply_norm_scores using
+# standard mean/std scaling.
+#
+# Residual is defined as:
+#   residual = d_norm - threshold
+#
+# The sigmoid maps that residual to [0, 1]:
+#   score = 1 / (1 + exp(-alpha * (residual - beta)))
+#
+# alpha and beta are shared across velocity and acceleration calibration.
+# Runtime code still expands them into per-modality fields internally.
+#
+# beta is a residual-space offset that delays how quickly the score rises
+# after the threshold is crossed.
+#
+# Detection per submitted API batch:
+#   1. residual -> sigmoid score
+#   2. channel occupancy = mean(top window_top_k raw sigmoid scores), zero-padded if needed
+#   3. modality score = max across the 3 channels in vel / accel
+#   4. final score = max(vel_score, accel_score)
+#
+# The API replay already handles the outer 2h window with 1h stride.
+# The model therefore does NOT create a second internal sliding window.
+
+groups:
+  group_1:
+    alpha: 0.74
+    beta: 1.86
+    threshold_vel: 3.0
+    threshold_accel: 3.0
+    window_top_k: 6
+    fusion_threshold: 0.40
+  group_2:
+    alpha: 0.51
+    beta: 6.33
+    threshold_vel: 4.0
+    threshold_accel: 4.0
+    window_top_k: 12
+    fusion_threshold: 0.40
+  group_3:
+    alpha: 1.12
+    beta: 2.24
+    threshold_vel: 2.0
+    threshold_accel: 2.0
+    window_top_k: 10
+    fusion_threshold: 0.70
+  group_4:
+    alpha: 3.35
+    beta: 1.75
+    threshold_vel: 1.0
+    threshold_accel: 1.0
+    window_top_k: 9
+    fusion_threshold: 0.31
