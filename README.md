@@ -1,8 +1,33 @@
 # Industrial Sensor Anomaly Detection API
 
-Anomaly detection and alerting pipeline for vibration-style industrial sensor streams. The system learns a per-sensor healthy baseline from a `fit` window, scores a `pred` window in 2-hour batches with 1-hour stride, and emits alerts through a three-tier priority engine.
+This repository implements an anomaly detection API for industrial vibration sensor data. For each sensor scenario, the model learns what normal looks like from a private `fit` file, then replays a private `pred` file in 2-hour windows with a 1-hour stride.
+
+The goal is simple: raise alarms for real event windows without reacting to every isolated spike. Most windows are normal, so false alarms matter as much as missed events.
 
 This public repository does not include private datasets, private labels, external source materials, local assistant configuration, or fitted model artifacts. Generated reference figures are included as visual summaries of the private benchmark and do not include raw source data.
+
+## Problem And Evaluation
+
+Each scenario has two private files:
+
+- A `fit` split used only to estimate normal sensor behavior.
+- A `pred` split replayed as the evaluation stream.
+
+The labels are private event windows. During evaluation, the API receives the `pred` split in overlapping batches and returns alarms. The evaluator checks whether those alarms match the labelled windows.
+
+## Metric Scoring
+
+The benchmark is scored by event window:
+
+- **True positive:** at least one emitted alarm overlaps a labelled event window for an event scenario.
+- **False negative:** no emitted alarm overlaps the labelled event window.
+- **Partial coverage:** an alarm is emitted, but it does not cover enough of the event window.
+- **False positive:** an alarm is emitted in a no-event scenario.
+- **Precision:** of all alarms emitted, how many were correct.
+- **Recall:** of all labelled events, how many were detected.
+- **F1:** harmonic mean of precision and recall.
+
+The final gate is simple: precision, recall, and F1 must each pass their threshold. The no-event scenarios are important because frequent false alarms make an alerting system hard to trust.
 
 ## Private Benchmark Results
 
@@ -49,7 +74,7 @@ Zero false positives were observed across 7 no-event sensor scenarios. Four scen
 `-- README.md
 ```
 
-The runtime path lives in `src/sample_processing`. The `src/analysis` package contains notebook and offline evaluation tooling layered on top of that stable core.
+The API code lives in `src/sample_processing`. The analysis code is used by the notebooks and the offline replay evaluator.
 
 ## Private Data Layout
 
@@ -81,13 +106,37 @@ Notebook `02_model_debugging.ipynb` uses the same private benchmark criteria and
 
 ## Methodology
 
-The pipeline is split into five stages:
+The pipeline has five main steps:
 
 1. **Data loading and labelling.** Per-scenario fit / pred parquet files are concatenated, `uptime` is used as the operational gate, and `pred` rows are labelled against private event windows.
-2. **Preprocessing.** The retained signal-level transform is `clip_rms_spikes(vel=100, accel=10)`, which clips sparse gross outliers without redefining the signal shape.
+2. **Preprocessing.** `clip_rms_spikes(vel=100, accel=10)` clips large one-off spikes before scoring.
 3. **Per-sensor baseline.** Each scenario's `fit` split defines its own healthy baseline. Residuals are measured in fit-healthy standard deviations.
-4. **Group-specific sigmoid scoring.** Sensor scenarios are partitioned into four visual archetype groups. Each group has its own `(alpha, beta, threshold, window_top_k, fusion_threshold)` in [norm_model_hyperparams.yaml](src/sample_processing/hyperparameters/norm_model_hyperparams.yaml).
-5. **Three-tier alert engine.** Priority flows from individual channel to group-3 to group-6 ownership. Confirmation gates, holdback windows, exclusive-individual mode, and a pending-priority queue suppress lower-priority events while higher-priority ownership is forming.
+4. **Scoring.** Residuals are converted into anomaly scores with group-specific settings from [norm_model_hyperparams.yaml](src/sample_processing/hyperparameters/norm_model_hyperparams.yaml).
+5. **Alarm selection.** The alert engine decides whether the signal should produce an individual-channel alarm or a grouped alarm.
+
+## Model And Alarm Setup
+
+The model is intentionally small and easy to inspect. It does three things:
+
+- Builds one healthy baseline per sensor from the `fit` data.
+- Scores how far each `pred` batch moves away from that baseline.
+- Aggregates the strongest samples in each 2-hour batch before deciding if an alarm should fire.
+
+The example below shows one scenario from the private benchmark. The top rows compare `fit` and `pred`, the middle rows show the normalized distance from the baseline, and the bottom rows show how channel scores become a final fusion score.
+
+![Sigmoid scoring example](notebooks/_generated/widget_exports/sigmoid_scoring/scenario_2.png)
+
+Scenario 2 is useful because the model sees many anomalous points, not just one clean spike. The alert layer uses that stream of detections as input, then decides when an alarm is worth emitting.
+
+![Scenario 2 API replay](notebooks/_generated/widget_exports/api_replay/scenario_2.png)
+
+In this replay, the model produces many anomaly markers, but the API does not alert on every one of them. Pending states, grouped-channel confirmation, and cooldown rules turn the noisy detection stream into a small number of alerts at the relevant moment.
+
+More exported examples are available in [notebooks/_generated/widget_exports](notebooks/_generated/widget_exports), including sigmoid-scoring views and API replay views for the private benchmark scenarios.
+
+After scoring, the alarm logic groups related channels so the API does not emit a separate alarm for every sensor axis. The hierarchy image shows the rule of thumb: start with individual channel alarms, promote to a grouped alarm when related channels move together, and use reset/cooldown rules to avoid reporting the same event repeatedly.
+
+![Alert hierarchy demo](notebooks/assets/alert_hierarchy/alert-hierarchy-demo.svg)
 
 ## Model And Alerting Improvements
 
@@ -99,7 +148,7 @@ The pipeline is split into five stages:
 | Window aggregation | Fraction of anomalous samples in the batch | Top-K occupancy on the outer 2h batch |
 | Alert state | Single lock | Tiered ownership with confirmation, cooldown, holdback, and reset logic |
 
-The current hierarchy is designed to suppress transient single-axis ticks while preserving detection of sustained multi-channel degradation.
+In short: the baseline model finds unusual movement, and the alarm hierarchy decides whether that movement is strong enough and coordinated enough to report.
 
 ## Reproducibility
 
