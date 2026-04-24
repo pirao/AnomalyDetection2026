@@ -415,7 +415,7 @@ def build_inference_test_notebook_summary(report: dict[str, Any]) -> dict[str, A
 
 
 def _print_inference_test_report(report: dict[str, Any]) -> None:
-    """Print the official scenario-level replay metrics and status table."""
+    """Print the canonical scenario-level replay metrics and status table."""
     summary = report.get("summary", {})
     print(
         "TP={tp}  FP={fp}  FN={fn}  TN={tn}".format(
@@ -532,8 +532,8 @@ def _load_scenario_frames_from_data_dir(
     time_col: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     try:
-        fit_df = pd.read_parquet(data_dir / f"vibe_data_fit_{scenario_id}.parquet")
-        pred_df = pd.read_parquet(data_dir / f"vibe_data_pred_{scenario_id}.parquet")
+        fit_df = pd.read_parquet(data_dir / f"sensor_data_fit_{scenario_id}.parquet")
+        pred_df = pd.read_parquet(data_dir / f"sensor_data_pred_{scenario_id}.parquet")
     except OSError as exc:
         raise RuntimeError(
             f"Failed to read parquet files for scenario {scenario_id} from {data_dir}. "
@@ -587,7 +587,7 @@ def _prepare_scenario_frames(
 
 def _scenario_ids_from_data_dir(data_dir: Path) -> list[int]:
     ids: set[int] = set()
-    for path in data_dir.glob("vibe_data_fit_*.parquet"):
+    for path in data_dir.glob("sensor_data_fit_*.parquet"):
         try:
             ids.add(int(path.stem.split("_")[-1]))
         except ValueError:
@@ -764,7 +764,7 @@ def run_inference_test_evaluation(
     pred_value: str = "pred",
     time_col: str = "sampled_at",
 ) -> dict[str, Any]:
-    """Run the API/test replay protocol and print official scenario-level metrics."""
+    """Run the API/test replay protocol and print canonical scenario-level metrics."""
     from sample_processing.api import main as api_main
 
     resolved_data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR

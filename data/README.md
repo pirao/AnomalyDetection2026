@@ -5,11 +5,11 @@ This directory is intentionally kept without private benchmark data.
 To run the full local benchmark workflow, place the private parquet files here:
 
 ```text
-vibe_data_fit_1.parquet
-vibe_data_pred_1.parquet
+sensor_data_fit_1.parquet
+sensor_data_pred_1.parquet
 ...
-vibe_data_fit_29.parquet
-vibe_data_pred_29.parquet
+sensor_data_fit_29.parquet
+sensor_data_pred_29.parquet
 ```
 
 Expected columns:
