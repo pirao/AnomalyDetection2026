@@ -27,7 +27,8 @@ __all__ = [
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_DIR = _REPO_ROOT / "data"
 DEFAULT_HYPERPARAMS_PATH = (
-    _REPO_ROOT / "src/sample_processing/hyperparameters/norm_model_hyperparams.yaml"
+    _REPO_ROOT
+    / "src/sample_processing/model/current/hyperparameters/norm_model_hyperparams.yaml"
 )
 DEFAULT_CACHE_ROOT = _REPO_ROOT / "cache/models"
 _VERSION_DIR_PATTERN = re.compile(r"^v(?P<version>\d+)$")
@@ -152,8 +153,8 @@ def _fit_all_scenarios(
     hyperparams_path: Path,
 ) -> "dict[int, object]":
     """Fit one AnomalyModel per scenario. Returns {scenario_id: AnomalyModel}."""
-    from sample_processing.model.anomaly_model import AnomalyModel
-    from analysis.api_replay import df_to_timeseries
+    from sample_processing.model.current.anomaly_model import AnomalyModel
+    from analysis.evaluation import df_to_timeseries
 
     models: dict[int, object] = {}
     for sid in scenario_ids:

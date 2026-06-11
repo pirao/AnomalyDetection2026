@@ -6,12 +6,16 @@ from typing import Any
 import yaml
 
 from .interface import AlertParams, ModelParams, PipelineParams, PredictOutput, TimeSeries, Weights
-from .scenario_groups import get_scenario_group_key
+from ..scenario_groups import get_scenario_group_key
 from .sensor_model import SensorModel
 
-_HYPERPARAMS_DIR = Path(__file__).parent.parent / "hyperparameters"
+# Model- and alert-specific hyperparameters live alongside this file in
+# current/hyperparameters/. The pipeline (windowing) config is shared across
+# every model, so it lives one level up in model/shared/.
+_HYPERPARAMS_DIR = Path(__file__).resolve().parent / "hyperparameters"
+_SHARED_DIR = Path(__file__).resolve().parents[1] / "shared"
 DEFAULT_PARAMS_PATH = _HYPERPARAMS_DIR / "norm_model_hyperparams.yaml"
-DEFAULT_PIPELINE_PARAMS_PATH = _HYPERPARAMS_DIR / "pipeline_hyperparams.yaml"
+DEFAULT_PIPELINE_PARAMS_PATH = _SHARED_DIR / "pipeline_hyperparams.yaml"
 DEFAULT_ALERT_PARAMS_PATH = _HYPERPARAMS_DIR / "alert_hyperparams.yaml"
 
 

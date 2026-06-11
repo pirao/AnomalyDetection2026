@@ -7,7 +7,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from sample_processing.model.anomaly_model import load_pipeline_params
+from sample_processing.model.current.anomaly_model import load_pipeline_params
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 

@@ -15,6 +15,11 @@ labels/*.yaml
 cache/models/
 *.pkl
 
+# MLflow tracking outputs
+mlflow.db
+mlruns/
+mlartifacts/
+
 # Local/private assistant configuration
 .claude/
 .superpowers/

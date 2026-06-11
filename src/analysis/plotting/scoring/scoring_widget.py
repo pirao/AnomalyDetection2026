@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from IPython.display import clear_output, display as _ipy_display
 
-from sample_processing.model.anomaly_model import load_model_params
+from sample_processing.model.current.anomaly_model import load_model_params
 from sample_processing.model.scenario_groups import (
     get_scenario_group_key,
     get_scenario_group_label,

@@ -16,9 +16,9 @@ from typing import Any
 
 import pandas as pd
 
-from sample_processing.model.alert_engine import AlertEngine
-from sample_processing.model.anomaly_model import AnomalyModel, load_alert_params, load_pipeline_params
-from sample_processing.model.interface import AlertParams, ModelParams, PredictOutput
+from sample_processing.model.current.alerting import AlertEngine
+from sample_processing.model.current.anomaly_model import AnomalyModel, load_alert_params, load_pipeline_params
+from sample_processing.model.current.interface import AlertParams, ModelParams, PredictOutput
 
 from .batching import df_to_timeseries, iter_row_batches, iter_time_batches
 from .incidents import get_incident_spans

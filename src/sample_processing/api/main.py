@@ -6,10 +6,10 @@ import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from sample_processing.model.alert_engine import AlertEngine
-from sample_processing.model.anomaly_model import AnomalyModel, load_alert_params
-from sample_processing.model.interface import DataPoint as _DataPoint
-from sample_processing.model.interface import TimeSeries
+from sample_processing.model.current.alerting import AlertEngine
+from sample_processing.model.current.anomaly_model import AnomalyModel, load_alert_params
+from sample_processing.model.current.interface import DataPoint as _DataPoint
+from sample_processing.model.current.interface import TimeSeries
 
 _ALERT_PARAMS = load_alert_params()
 

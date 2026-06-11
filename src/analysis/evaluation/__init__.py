@@ -1,7 +1,7 @@
-"""Offline API replay — simulate the production batching and scoring lifecycle.
+"""Offline evaluation — simulate the production batching and scoring lifecycle.
 
-Re-exports the public surface of the former monolithic ``api_replay.py`` so
-every existing ``from analysis.api_replay import ...`` keeps working.
+Re-exports the public surface of the submodules below so callers can do
+``from analysis.evaluation import ...`` without reaching into them directly.
 
 Module layout
 -------------

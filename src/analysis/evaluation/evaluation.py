@@ -17,9 +17,9 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from sample_processing.model.alert_engine import AlertEngine
-from sample_processing.model.anomaly_model import AnomalyModel, load_alert_params, load_pipeline_params
-from sample_processing.model.interface import AlertParams
+from sample_processing.model.current.alerting import AlertEngine
+from sample_processing.model.current.anomaly_model import AnomalyModel, load_alert_params, load_pipeline_params
+from sample_processing.model.current.interface import AlertParams
 from sample_processing.model.scenario_groups import (
     GROUP_DEFINITIONS,
     get_scenario_group_key,

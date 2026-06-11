@@ -23,8 +23,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from analysis.api_replay import simulate_api_replay_one_scenario
-from sample_processing.model.anomaly_model import (
+from analysis.evaluation import simulate_api_replay_one_scenario
+from sample_processing.model.current.anomaly_model import (
     load_alert_params,
     load_model_params,
 )

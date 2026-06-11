@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .baselines import apply_norm_scores, fit_norm_baselines
+from .normalization import apply_norm_scores, fit_norm_baselines
 from .preprocessing import clip_rms_spikes
 
 from .interface import TimeSeries

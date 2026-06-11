@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from sample_processing.model.interface import DataPoint, TimeSeries
+from sample_processing.model.current.interface import DataPoint, TimeSeries
 
 
 def df_to_timeseries(

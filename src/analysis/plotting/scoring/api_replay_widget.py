@@ -9,19 +9,19 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from IPython.display import clear_output, display
 
-from analysis.api_replay import (
+from analysis.evaluation import (
     df_to_timeseries,
     diagnose_replay_against_incidents,
     get_incident_spans,
     simulate_api_replay_one_scenario,
 )
-from sample_processing.model.anomaly_model import (
+from sample_processing.model.current.anomaly_model import (
     AnomalyModel,
     load_alert_params,
     load_model_params,
     load_pipeline_params,
 )
-from sample_processing.model.interface import ModelParams
+from sample_processing.model.current.interface import ModelParams
 from sample_processing.model.scenario_groups import (
     get_scenario_group_key,
     get_scenario_group_label,

@@ -1,0 +1,3 @@
+# Anomaly model hyperparameters
+z_threshold: 3
+window_anomaly_ratio: 0.2

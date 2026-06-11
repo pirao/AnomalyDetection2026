@@ -12,9 +12,9 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pytest
 
-from sample_processing.model.alert_engine import AlertEngine
-from sample_processing.model.anomaly_model import AnomalyModel
-from sample_processing.model.interface import (
+from sample_processing.model.current.alerting import AlertEngine
+from sample_processing.model.current.anomaly_model import AnomalyModel
+from sample_processing.model.current.interface import (
     AlertDecision,
     DataPoint,
     PredictOutput,
