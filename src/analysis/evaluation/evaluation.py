@@ -33,12 +33,9 @@ from .incidents import (
     _serialize_incident_window,
     load_incidents_by_scenario,
 )
-from .simulation import DEFAULT_DATA_DIR, simulate_api_replay_one_scenario
+from .simulation import DEFAULT_DATA_DIR
 
 _DEFAULT_GRACE_HOURS = 2.0
-_PRECISION_THRESHOLD = 0.50
-_RECALL_THRESHOLD = 0.30
-_F1_THRESHOLD = 0.35
 _STATUS_SEVERITY = {"FN": 4, "PARTIAL": 3, "FP": 2, "TP": 1, "TN": 0}
 _NOTEBOOK_TEST_GROUPS = [
     ("test_no_alert_when_no_incident", lambda df: df["n_incidents"] == 0),
@@ -54,9 +51,6 @@ def summarize_inference_test_metrics(
     *,
     scenario_ids: list[int] | None = None,
     tolerance_hours: float = _DEFAULT_GRACE_HOURS,
-    precision_threshold: float = _PRECISION_THRESHOLD,
-    recall_threshold: float = _RECALL_THRESHOLD,
-    f1_threshold: float = _F1_THRESHOLD,
 ) -> dict[str, Any]:
     """Summarize alerts using the exact scenario-level semantics from test_evaluation.py."""
     tol = pd.Timedelta(hours=float(tolerance_hours))
@@ -96,17 +90,23 @@ def summarize_inference_test_metrics(
         else:
             status = "FN"
 
+        _n_alerts = int(len(alert_times))
+        _n_covered = int(len(covered_idx))
+        _alert_efficiency = (
+            round(_n_covered / _n_alerts, 3) if _n_alerts > 0 else (1.0 if not has_incident else 0.0)
+        )
+
         scenario_rows.append(
             {
                 "scenario_id": int(sid),
                 "scenario_group": get_scenario_group_key(sid),
                 "scenario_group_label": get_scenario_group_label(sid),
                 "n_incidents": int(len(incident_windows)),
-                "n_alerts": int(len(alert_times)),
+                "n_alerts": _n_alerts,
                 "alerts": [ts.isoformat() for ts in alert_times],
                 "incident_windows": [_serialize_incident_window(inc) for inc in incident_windows],
                 "has_alert_in_window": bool(has_alert_in_window),
-                "covered_incident_count": int(len(covered_idx)),
+                "covered_incident_count": _n_covered,
                 "covered_incident_windows": [
                     _serialize_incident_window(incident_windows[idx]) for idx in covered_idx
                 ],
@@ -116,6 +116,7 @@ def summarize_inference_test_metrics(
                 ],
                 "all_incident_windows_hit": bool(all_incident_windows_hit),
                 "status": status,
+                "alert_efficiency": _alert_efficiency,
             }
         )
 
@@ -161,6 +162,10 @@ def summarize_inference_test_metrics(
         else 0.0
     )
 
+    _agg_covered = sum(r["covered_incident_count"] for r in scenario_rows)
+    _agg_alerts = sum(r["n_alerts"] for r in scenario_rows)
+    _agg_efficiency = round(_agg_covered / _agg_alerts, 3) if _agg_alerts > 0 else 1.0
+
     summary = {
         "tp": int(f1_tp),
         "fp": int(f1_fp),
@@ -169,26 +174,10 @@ def summarize_inference_test_metrics(
         "precision": round(float(precision), 3),
         "recall": round(float(recall), 3),
         "f1": round(float(f1), 3),
-    }
-    thresholds = {
-        "precision_min": float(precision_threshold),
-        "recall_min": float(recall_threshold),
-        "f1_min": float(f1_threshold),
-        "precision_pass": bool(precision >= precision_threshold),
-        "recall_pass": bool(recall >= recall_threshold),
-        "f1_pass": bool(f1 >= f1_threshold),
-        "all_pass": bool(
-            precision >= precision_threshold
-            and recall >= recall_threshold
-            and f1 >= f1_threshold
-        ),
-        "precision_counts": {"tp": int(precision_tp), "fp": int(precision_fp)},
-        "recall_counts": {"tp": int(recall_tp), "fn": int(recall_fn)},
-        "f1_counts": {"tp": int(f1_tp), "fp": int(f1_fp), "fn": int(f1_fn), "tn": int(tn)},
+        "alert_efficiency": _agg_efficiency,
     }
     return {
         "summary": summary,
-        "thresholds": thresholds,
         "scenarios_df": scenarios_df,
     }
 
@@ -196,29 +185,27 @@ def summarize_inference_test_metrics(
 def build_inference_test_metric_cards_df(report: dict[str, Any]) -> pd.DataFrame:
     """Return notebook-friendly aggregate metric cards for test-aligned evaluation."""
     summary = dict(report.get("summary", {}))
-    thresholds = dict(report.get("thresholds", {}))
     return pd.DataFrame(
         [
             {
                 "metric": "precision",
                 "value": float(summary.get("precision", 0.0)),
-                "threshold": float(thresholds.get("precision_min", 0.0)),
-                "pass": bool(thresholds.get("precision_pass", False)),
                 "formula": "TP / (TP + FP)",
             },
             {
                 "metric": "recall",
                 "value": float(summary.get("recall", 0.0)),
-                "threshold": float(thresholds.get("recall_min", 0.0)),
-                "pass": bool(thresholds.get("recall_pass", False)),
                 "formula": "TP / (TP + FN)",
             },
             {
                 "metric": "f1",
                 "value": float(summary.get("f1", 0.0)),
-                "threshold": float(thresholds.get("f1_min", 0.0)),
-                "pass": bool(thresholds.get("f1_pass", False)),
                 "formula": "2PR / (P + R)",
+            },
+            {
+                "metric": "alert_efficiency",
+                "value": float(summary.get("alert_efficiency", 1.0)),
+                "formula": "covered / n_alerts",
             },
         ]
     )
@@ -261,6 +248,7 @@ def build_inference_test_scenario_coverage_df(report: dict[str, Any]) -> pd.Data
         "covered_incident_count",
         "missed_incident_count",
         "n_alerts",
+        "alert_efficiency",
         "has_alert_in_window",
         "all_incident_windows_hit",
     ]
@@ -344,6 +332,30 @@ def build_inference_test_per_test_results_df(report: dict[str, Any]) -> pd.DataF
     return pd.DataFrame(rows)
 
 
+def build_incident_window_metric_cards_df(report: dict[str, Any]) -> pd.DataFrame:
+    """Per-event (fault-window-level) precision/recall/F1.
+
+    Uses the same notebook-friendly column shape as
+    ``build_inference_test_metric_cards_df``.
+    """
+    wm = build_incident_window_confusion_matrix_df(report, normalize="count")
+    if wm.empty:
+        return pd.DataFrame(columns=["metric", "value", "formula"])
+    tp = int(wm.loc["actual positive", "predicted positive"])
+    fn = int(wm.loc["actual positive", "predicted negative"])
+    fp = int(wm.loc["actual negative", "predicted positive"])
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    return pd.DataFrame(
+        [
+            {"metric": "precision", "value": round(precision, 3), "formula": "TP / (TP + FP)"},
+            {"metric": "recall", "value": round(recall, 3), "formula": "TP / (TP + FN)"},
+            {"metric": "f1", "value": round(f1, 3), "formula": "2PR / (P + R)"},
+        ]
+    )
+
+
 def build_incident_window_confusion_matrix_df(
     report: dict[str, Any],
     *,
@@ -395,6 +407,7 @@ def build_inference_test_notebook_summary(report: dict[str, Any]) -> dict[str, A
     blocking_scenarios_df = build_inference_test_blocking_scenarios_df(report)
     window_confusion_matrix_df = build_incident_window_confusion_matrix_df(report, normalize="count")
     window_confusion_matrix_row_pct_df = build_incident_window_confusion_matrix_df(report, normalize="row")
+    window_metric_cards_df = build_incident_window_metric_cards_df(report)
     interpretation_note = (
         "Scenario matrix: each scenario is one instance regardless of how many incident "
         "windows it has — a PARTIAL (1/2 covered) counts the same as a full TP. "
@@ -408,6 +421,7 @@ def build_inference_test_notebook_summary(report: dict[str, Any]) -> dict[str, A
         "per_test_df": per_test_df,
         "window_confusion_matrix_df": window_confusion_matrix_df,
         "window_confusion_matrix_row_pct_df": window_confusion_matrix_row_pct_df,
+        "window_metric_cards_df": window_metric_cards_df,
         "scenario_coverage_df": scenario_coverage_df,
         "blocking_scenarios_df": blocking_scenarios_df,
         "interpretation_note": interpretation_note,
@@ -477,6 +491,9 @@ def _print_inference_test_report(report: dict[str, Any]) -> None:
             "candidate_missed_incident_count",
             "current_covered_incident_count",
             "candidate_covered_incident_count",
+            "current_n_alerts",
+            "candidate_n_alerts",
+            "delta_n_alerts",
         ]
         print(best_alt_df.loc[:, [c for c in cols if c in best_alt_df.columns]].to_string(index=False))
 
@@ -653,42 +670,6 @@ def _run_api_scenario(
     return alerts
 
 
-def _alert_timestamps_from_replay_df(replay_df: pd.DataFrame) -> list[str]:
-    if replay_df.empty or "alert" not in replay_df.columns or "timestamp" not in replay_df.columns:
-        return []
-    alert_rows = replay_df.loc[replay_df["alert"].fillna(False)].copy()
-    if alert_rows.empty:
-        return []
-    timestamps = pd.to_datetime(alert_rows["timestamp"], errors="coerce", utc=True).dropna().sort_values()
-    return [ts.isoformat() for ts in timestamps.tolist()]
-
-
-def _run_fast_replay_scenario(
-    *,
-    scenario_id: int,
-    fit_df: pd.DataFrame,
-    pred_df: pd.DataFrame,
-    time_col: str,
-    alert_params: AlertParams,
-    model: AnomalyModel | None = None,
-    model_group_key: str | None = None,
-) -> list[str]:
-    effective_model = model
-    if model_group_key is not None:
-        effective_model = AnomalyModel(scenario_id=scenario_id, group_key=model_group_key)
-        effective_model.fit(df_to_timeseries(fit_df, time_col=time_col))
-
-    replay_df = simulate_api_replay_one_scenario(
-        fit_df,
-        pred_df,
-        model=effective_model,
-        alert_params=alert_params,
-        sensor_id=f"analysis_sensor_{scenario_id}",
-        time_col=time_col,
-    )
-    return _alert_timestamps_from_replay_df(replay_df)
-
-
 def _worst_scenarios_df(
     scenarios_df: pd.DataFrame,
     *,
@@ -705,44 +686,146 @@ def _worst_scenarios_df(
     return ranked.head(int(worst_n)).drop(columns=["status_severity"], errors="ignore")
 
 
-def _candidate_better(candidate: dict[str, Any], current: dict[str, Any]) -> bool:
-    candidate_key = (
-        int(candidate.get("missed_incident_count", 0)),
-        int(_STATUS_SEVERITY.get(str(candidate.get("status", "")), -1)),
-        int(candidate.get("n_alerts", 0)),
-    )
-    current_key = (
-        int(current.get("missed_incident_count", 0)),
-        int(_STATUS_SEVERITY.get(str(current.get("status", "")), -1)),
-        int(current.get("n_alerts", 0)),
-    )
-    return (
-        candidate_key[0] < current_key[0]
-        or (candidate_key[0] == current_key[0] and candidate_key[1] < current_key[1])
-        or (
-            candidate_key[0] == current_key[0]
-            and candidate_key[1] == current_key[1]
-            and candidate_key[2] < current_key[2]
-        )
-    )
-
-
 def _candidate_comparison_outcome(candidate: dict[str, Any], current: dict[str, Any]) -> str:
-    candidate_key = (
+    primary_candidate = (
         int(candidate.get("missed_incident_count", 0)),
         int(_STATUS_SEVERITY.get(str(candidate.get("status", "")), -1)),
-        int(candidate.get("n_alerts", 0)),
     )
-    current_key = (
+    primary_current = (
         int(current.get("missed_incident_count", 0)),
         int(_STATUS_SEVERITY.get(str(current.get("status", "")), -1)),
-        int(current.get("n_alerts", 0)),
     )
-    if candidate_key < current_key:
+    if primary_candidate < primary_current:
         return "strictly_better"
-    if candidate_key == current_key:
-        return "marginal"
+    if primary_candidate == primary_current:
+        # Primary metrics equal: secondary check is alert count.
+        # Fewer or equal alerts = marginal (not worse). More alerts = worse.
+        if int(candidate.get("n_alerts", 0)) <= int(current.get("n_alerts", 0)):
+            return "marginal"
     return "worse"
+
+
+def diagnose_group_reassignment(
+    scenario_id: int,
+    *,
+    full_df: pd.DataFrame | None = None,
+    data_dir: Path | str | None = None,
+    labels_path: Path | str | None = None,
+    alert_params: AlertParams | None = None,
+    time_col: str = "sampled_at",
+) -> pd.DataFrame:
+    """Run scenario_id through every candidate group and show side-by-side metrics.
+
+    Prints a readable table and returns the full comparison DataFrame so you can
+    inspect it interactively. Useful for debugging why no reassignment was found,
+    or confirming that no group is strictly better or marginal.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per candidate group with columns:
+        candidate_group, candidate_status, candidate_missed, candidate_covered,
+        candidate_n_alerts, delta_n_alerts, comparison_outcome.
+        The current group is shown as a header line, not a row.
+    """
+    from fastapi.testclient import TestClient
+    from sample_processing.api import main as api_main
+
+    from sample_processing.model.scenario_groups import (
+        GROUP_DEFINITIONS,
+        get_scenario_group_key,
+        get_scenario_group_label,
+    )
+
+    resolved_data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR
+    incidents_by_scenario = load_incidents_by_scenario(labels_path)
+
+    effective_alert_params = alert_params or load_alert_params()
+    api_main._ALERT_PARAMS = effective_alert_params
+
+    scenario_frames = _prepare_scenario_frames(
+        full_df=full_df,
+        data_dir=resolved_data_dir,
+        ordered_ids=[scenario_id],
+        scenario_col="scenario_id",
+        split_col="split",
+        fit_value="fit",
+        pred_value="pred",
+        time_col=time_col,
+    )
+    fit_df, pred_df = scenario_frames[scenario_id]
+
+    current_group = get_scenario_group_key(scenario_id)
+
+    with TestClient(api_main.app) as client:
+        current_alerts = _run_api_scenario(
+            client,
+            scenario_id=scenario_id,
+            fit_df=fit_df,
+            pred_df=pred_df,
+            time_col=time_col,
+        )
+        current_report = summarize_inference_test_metrics(
+            {scenario_id: current_alerts},
+            incidents_by_scenario,
+            scenario_ids=[scenario_id],
+        )
+        current_row = current_report["scenarios_df"].iloc[0].to_dict()
+
+        rows = []
+        for candidate_group in GROUP_DEFINITIONS.keys():
+            if candidate_group == current_group:
+                continue
+            alt_alerts = _run_api_scenario(
+                client,
+                scenario_id=scenario_id,
+                fit_df=fit_df,
+                pred_df=pred_df,
+                time_col=time_col,
+                model_group_key=candidate_group,
+            )
+            alt_report = summarize_inference_test_metrics(
+                {scenario_id: alt_alerts},
+                incidents_by_scenario,
+                scenario_ids=[scenario_id],
+            )
+            alt_row = alt_report["scenarios_df"].iloc[0].to_dict()
+            candidate_metrics = {
+                "missed_incident_count": int(alt_row["missed_incident_count"]),
+                "status": str(alt_row["status"]),
+                "n_alerts": int(alt_row["n_alerts"]),
+            }
+            current_metrics = {
+                "missed_incident_count": int(current_row["missed_incident_count"]),
+                "status": str(current_row["status"]),
+                "n_alerts": int(current_row["n_alerts"]),
+            }
+            rows.append({
+                "candidate_group": candidate_group,
+                "candidate_group_label": str(GROUP_DEFINITIONS[candidate_group]["label"]),
+                "candidate_status": str(alt_row["status"]),
+                "candidate_missed": int(alt_row["missed_incident_count"]),
+                "candidate_covered": int(alt_row["covered_incident_count"]),
+                "candidate_n_alerts": int(alt_row["n_alerts"]),
+                "delta_n_alerts": int(alt_row["n_alerts"]) - int(current_row["n_alerts"]),
+                "comparison_outcome": _candidate_comparison_outcome(candidate_metrics, current_metrics),
+            })
+
+    print(
+        f"Scenario {scenario_id} — current group: {current_group} "
+        f"({get_scenario_group_label(scenario_id)})"
+    )
+    print(
+        f"  status={current_row['status']}  "
+        f"missed={current_row['missed_incident_count']}  "
+        f"covered={current_row['covered_incident_count']}  "
+        f"n_alerts={current_row['n_alerts']}\n"
+    )
+
+    result_df = pd.DataFrame(rows)
+    if not result_df.empty:
+        print(result_df.to_string(index=False))
+    return result_df
 
 
 def run_inference_test_evaluation(
@@ -752,9 +835,6 @@ def run_inference_test_evaluation(
     labels_path: Path | str | None = None,
     alert_params: AlertParams | None = None,
     alert_params_path: Path | str | None = None,
-    models: dict[int, AnomalyModel] | None = None,
-    model_version: int | str | None = None,
-    execution_mode: Literal["api_exact", "replay_fast"] = "replay_fast",
     include_group_reassignment_analysis: bool = True,
     worst_n: int = 5,
     scenario_ids: list[int] | None = None,
@@ -764,7 +844,8 @@ def run_inference_test_evaluation(
     pred_value: str = "pred",
     time_col: str = "sampled_at",
 ) -> dict[str, Any]:
-    """Run the API/test replay protocol and print canonical scenario-level metrics."""
+    """Run the API test replay protocol and print canonical scenario-level metrics."""
+    from fastapi.testclient import TestClient
     from sample_processing.api import main as api_main
 
     resolved_data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR
@@ -788,12 +869,6 @@ def run_inference_test_evaluation(
         else load_alert_params(Path(alert_params_path)) if alert_params_path is not None
         else load_alert_params()
     )
-    cache_meta: dict[str, Any] | None = None
-    effective_models = models
-    if effective_models is None and model_version is not None:
-        from analysis.model_cache import load_fitted_models
-
-        effective_models, cache_meta = load_fitted_models(model_version)
 
     api_main._ALERT_PARAMS = effective_alert_params
     api_main._models.clear()
@@ -811,35 +886,18 @@ def run_inference_test_evaluation(
     )
 
     alerts_by_scenario: dict[int, list[str]] = {}
-    if execution_mode == "api_exact":
-        from fastapi.testclient import TestClient
-
-        with TestClient(api_main.app) as client:
-            for sid in ordered_ids:
-                fit_df, pred_df = scenario_frames[int(sid)]
-                if fit_df.empty or pred_df.empty:
-                    alerts_by_scenario[int(sid)] = []
-                    continue
-                alerts_by_scenario[int(sid)] = _run_api_scenario(
-                    client,
-                    scenario_id=int(sid),
-                    fit_df=fit_df,
-                    pred_df=pred_df,
-                    time_col=time_col,
-                )
-    else:
+    with TestClient(api_main.app) as client:
         for sid in ordered_ids:
             fit_df, pred_df = scenario_frames[int(sid)]
             if fit_df.empty or pred_df.empty:
                 alerts_by_scenario[int(sid)] = []
                 continue
-            alerts_by_scenario[int(sid)] = _run_fast_replay_scenario(
+            alerts_by_scenario[int(sid)] = _run_api_scenario(
+                client,
                 scenario_id=int(sid),
                 fit_df=fit_df,
                 pred_df=pred_df,
                 time_col=time_col,
-                alert_params=effective_alert_params,
-                model=None if effective_models is None else effective_models.get(int(sid)),
             )
 
     api_main._models.clear()
@@ -856,11 +914,8 @@ def run_inference_test_evaluation(
         "stride_hours": float(pipeline.model_window_size_hours - pipeline.window_overlap_hours),
         "tolerance_hours": float(_DEFAULT_GRACE_HOURS),
     }
-    report["execution_mode"] = execution_mode
     report["alert_params"] = effective_alert_params.model_dump()
     report["alerts_by_scenario"] = alerts_by_scenario
-    if cache_meta is not None:
-        report["model_cache_meta"] = cache_meta
     notebook_summary = build_inference_test_notebook_summary(report)
     report.update(notebook_summary)
 
@@ -870,14 +925,7 @@ def run_inference_test_evaluation(
 
     if include_group_reassignment_analysis and not worst_df.empty:
         reassignment_rows: list[dict[str, Any]] = []
-        if execution_mode == "api_exact":
-            from fastapi.testclient import TestClient
-
-            client_ctx = TestClient(api_main.app)
-        else:
-            client_ctx = None
-        try:
-            client = client_ctx.__enter__() if client_ctx is not None else None
+        with TestClient(api_main.app) as client:
             for row in worst_df.to_dict(orient="records"):
                 sid = int(row["scenario_id"])
                 current_group = str(row["scenario_group"])
@@ -886,24 +934,14 @@ def run_inference_test_evaluation(
                 for candidate_group in GROUP_DEFINITIONS.keys():
                     if candidate_group == current_group:
                         continue
-                    if execution_mode == "api_exact":
-                        alt_alerts = _run_api_scenario(
-                            client,
-                            scenario_id=sid,
-                            fit_df=fit_df,
-                            pred_df=pred_df,
-                            time_col=time_col,
-                            model_group_key=candidate_group,
-                        )
-                    else:
-                        alt_alerts = _run_fast_replay_scenario(
-                            scenario_id=sid,
-                            fit_df=fit_df,
-                            pred_df=pred_df,
-                            time_col=time_col,
-                            alert_params=effective_alert_params,
-                            model_group_key=candidate_group,
-                        )
+                    alt_alerts = _run_api_scenario(
+                        client,
+                        scenario_id=sid,
+                        fit_df=fit_df,
+                        pred_df=pred_df,
+                        time_col=time_col,
+                        model_group_key=candidate_group,
+                    )
                     alt_report = summarize_inference_test_metrics(
                         {sid: alt_alerts},
                         incidents_by_scenario,
@@ -928,6 +966,7 @@ def run_inference_test_evaluation(
                         "candidate_has_alert_in_window": bool(alt_row["has_alert_in_window"]),
                         "current_all_incident_windows_hit": bool(row["all_incident_windows_hit"]),
                         "candidate_all_incident_windows_hit": bool(alt_row["all_incident_windows_hit"]),
+                        "delta_n_alerts": int(alt_row["n_alerts"]) - int(row["n_alerts"]),
                     }
                     candidate_metrics = {
                         "missed_incident_count": candidate_row["candidate_missed_incident_count"],
@@ -949,9 +988,6 @@ def run_inference_test_evaluation(
                         "marginal",
                     }
                     reassignment_rows.append(candidate_row)
-        finally:
-            if client_ctx is not None:
-                client_ctx.__exit__(None, None, None)
         group_reassignment_df = pd.DataFrame(reassignment_rows)
         report["group_reassignment_df"] = group_reassignment_df
         if group_reassignment_df.empty:

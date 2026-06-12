@@ -18,10 +18,26 @@ The pipeline (windowing) config is shared across models and read from
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+
+def _data_digest(data_dir: Path) -> str:
+    """MD5 fingerprint of all parquet files in data_dir.
+
+    Sorted by filename for determinism across OSes. Includes the filename in
+    the hash so that renaming a file (same bytes, different name) also changes
+    the digest.
+    """
+    h = hashlib.md5()
+    for f in sorted(data_dir.glob("*.parquet")):
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()[:12]
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -102,69 +118,107 @@ def _log_model_run(
     report: dict[str, Any],
     *,
     model_tag: str,
-    extra_params: dict[str, Any],
+    model_params: dict[str, Any],
     pipeline_params: dict[str, Any],
+    alert_params_dict: dict[str, Any] | None = None,
+    data_digest: str = "",
+    model_cache_version: str = "",
+    model_cache_notes: str = "",
 ) -> None:
     """Log one parent run + one nested child per scenario.
 
-    Parent run holds global metrics (precision/recall/F1), per-test-type
-    pass/fail counts, and scenario coverage tables as MLflow table artifacts.
-    Each nested child holds per-scenario tags and metrics for drill-down
-    comparison in the MLflow UI.
+    Parent run params use dot notation:
+    - ``pipeline.*``  — windowing/batching config (shared across models)
+    - ``model.*``     — model hyperparameters (incl. ``model.groups.group_N.*``)
+    - ``alert.*``     — alert engine hyperparameters (current model only)
+
+    Parent metrics: precision/recall/f1 at machine and event level, total_alerts.
+    Each nested child holds per-scenario tags and metrics for drill-down.
     """
     import mlflow
 
     summary = report["summary"]
-    scenario_coverage_df: pd.DataFrame = report.get("scenario_coverage_df", pd.DataFrame())
-    blocking_scenarios_df: pd.DataFrame = report.get("blocking_scenarios_df", pd.DataFrame())
-    per_test_df: pd.DataFrame = report.get("per_test_df", pd.DataFrame())
     scenarios_df: pd.DataFrame = report.get("scenarios_df", pd.DataFrame())
+    window_confusion_df: pd.DataFrame = report.get("window_confusion_matrix_df", pd.DataFrame())
 
-    all_params = {
-        **pipeline_params,
-        **{k: v for k, v in extra_params.items() if isinstance(v, (int, float, bool, str))},
-    }
+    all_params: dict[str, Any] = {f"pipeline.{k}": v for k, v in pipeline_params.items()}
+    all_params.update(
+        {f"model.{k}": v for k, v in model_params.items() if isinstance(v, (int, float, bool, str))}
+    )
+    if alert_params_dict:
+        all_params.update(
+            {f"alert.{k}": v for k, v in alert_params_dict.items() if isinstance(v, (int, float, bool, str))}
+        )
 
-    with mlflow.start_run(tags={"model": model_tag}):
+    # Delete any existing run for this model_tag so we don't accumulate stale runs.
+    client = mlflow.tracking.MlflowClient()
+    _exp = client.get_experiment_by_name("baseline-vs-current")
+    if _exp is not None:
+        for _r in client.search_runs(
+            experiment_ids=[_exp.experiment_id],
+            filter_string=f"tags.model = '{model_tag}'",
+        ):
+            client.delete_run(_r.info.run_id)
+
+    with mlflow.start_run(
+        run_name=model_tag,
+        tags={
+            "model": model_tag,
+            "data_digest": data_digest,
+            "model_cache_version": model_cache_version,
+            "model_cache_notes": model_cache_notes,
+        },
+    ):
         mlflow.log_params(all_params)
 
+        # Per-machine summary (scenario-level; PARTIAL counts as TP)
         mlflow.log_metrics(
             {
                 "precision": float(summary["precision"]),
-                "recall": float(summary["recall"]),
-                "f1": float(summary["f1"]),
-                "tp": float(summary["tp"]),
-                "fp": float(summary["fp"]),
-                "fn": float(summary["fn"]),
-                "tn": float(summary["tn"]),
+                "recall":    float(summary["recall"]),
+                "f1":        float(summary["f1"]),
             }
         )
 
-        if isinstance(per_test_df, pd.DataFrame) and not per_test_df.empty:
-            for row in per_test_df.itertuples(index=False):
-                key = str(row.test).removeprefix("test_")
-                mlflow.log_metrics(
-                    {
-                        f"test_{key}_passed": int(row.passed),
-                        f"test_{key}_failed": int(row.failed),
-                    }
-                )
-
-        if isinstance(scenario_coverage_df, pd.DataFrame) and not scenario_coverage_df.empty:
-            mlflow.log_table(
-                data=scenario_coverage_df.to_dict(orient="list"),
-                artifact_file="scenario_coverage.json",
-            )
-
-        if isinstance(blocking_scenarios_df, pd.DataFrame) and not blocking_scenarios_df.empty:
-            mlflow.log_table(
-                data=blocking_scenarios_df.to_dict(orient="list"),
-                artifact_file="blocking_scenarios.json",
+        # Per-event summary (fault-window-level; PARTIAL → 1 TP + 1 FN)
+        if isinstance(window_confusion_df, pd.DataFrame) and not window_confusion_df.empty:
+            _e_tp  = int(window_confusion_df.loc["actual positive", "predicted positive"])
+            _e_fn  = int(window_confusion_df.loc["actual positive", "predicted negative"])
+            _e_fp  = int(window_confusion_df.loc["actual negative", "predicted positive"])
+            _e_prec = _e_tp / (_e_tp + _e_fp) if (_e_tp + _e_fp) else 0.0
+            _e_rec  = _e_tp / (_e_tp + _e_fn) if (_e_tp + _e_fn) else 0.0
+            _e_f1   = 2 * _e_prec * _e_rec / (_e_prec + _e_rec) if (_e_prec + _e_rec) else 0.0
+            mlflow.log_metrics(
+                {"event_precision": _e_prec, "event_recall": _e_rec, "event_f1": _e_f1}
             )
 
         if isinstance(scenarios_df, pd.DataFrame) and not scenarios_df.empty:
+            _total_covered = float(scenarios_df["covered_incident_count"].sum())
+            _total_n_alerts = float(scenarios_df["n_alerts"].sum())
+            _alert_eff = _total_covered / _total_n_alerts if _total_n_alerts > 0 else 1.0
+            mlflow.log_metrics({
+                "total_alerts": _total_n_alerts,
+                "alert_efficiency": round(_alert_eff, 3),
+            })
+
+            _ds = mlflow.data.from_pandas(
+                scenarios_df[["scenario_id", "status", "n_alerts", "n_incidents"]],
+                source=str(_REPO_ROOT / "data"),
+                name="sensor_scenarios",
+                digest=data_digest or None,
+            )
+            mlflow.log_input(_ds, context="evaluation")
+
             for row in scenarios_df.itertuples(index=False):
                 sid = int(row.scenario_id)
+                n_inc = int(row.n_incidents)
+                n_al = int(row.n_alerts)
+                n_cov = int(row.covered_incident_count)
+                ev_recall = n_cov / n_inc if n_inc > 0 else 0.0
+                false_alerts = float(n_al) if n_inc == 0 else 0.0
+                child_eff = (
+                    round(n_cov / n_al, 3) if n_al > 0 else (1.0 if n_inc == 0 else 0.0)
+                )
                 with mlflow.start_run(nested=True, run_name=f"scenario_{sid}"):
                     mlflow.set_tags(
                         {
@@ -176,11 +230,13 @@ def _log_model_run(
                     )
                     mlflow.log_metrics(
                         {
-                            "has_alert_in_window": float(bool(row.has_alert_in_window)),
-                            "n_alerts": float(int(row.n_alerts)),
-                            "n_incidents": float(int(row.n_incidents)),
-                            "covered_incident_count": float(int(row.covered_incident_count)),
+                            "n_alerts": float(n_al),
+                            "n_incidents": float(n_inc),
+                            "covered_incident_count": float(n_cov),
                             "missed_incident_count": float(int(row.missed_incident_count)),
+                            "event_recall": ev_recall,
+                            "false_alerts": false_alerts,
+                            "alert_efficiency": child_eff,
                         }
                     )
 
@@ -197,6 +253,7 @@ def compare_baseline_vs_current(
     fit_value: str = "fit",
     pred_value: str = "pred",
     time_col: str = "sampled_at",
+    model_version: int | str = "latest",
 ) -> dict[str, dict[str, Any]]:
     """Compare baseline and current model in MLflow experiment "baseline-vs-current".
 
@@ -205,11 +262,10 @@ def compare_baseline_vs_current(
     - Run B (model=current): 6-channel sigmoid, evaluated through the FastAPI test client
 
     Each parent run contains:
-    - global metrics: precision, recall, f1, tp, fp, fn, tn
-    - per-test-type pass/fail counts (mirrors notebook 02 Section 6 ``per_test_df``)
-    - ``scenario_coverage.json`` table artifact (all 29 scenarios)
-    - ``blocking_scenarios.json`` table artifact (FN/PARTIAL scenarios only)
-    - 29 nested child runs, one per scenario, with per-scenario metrics and tags
+    - params: ``pipeline.*``, ``model.*`` (incl. group overrides), ``alert.*``
+    - metrics: precision/recall/f1 at machine and event level, total_alerts
+    - dataset input: scenario summary digest for reproducibility
+    - N nested child runs, one per scenario, with per-scenario tags and metrics
 
     **Requires baseline model files** — see module docstring.
 
@@ -244,7 +300,7 @@ def compare_baseline_vs_current(
     )
     from analysis.evaluation.incidents import load_incidents_by_scenario
     from analysis.evaluation.simulation import DEFAULT_DATA_DIR
-    from sample_processing.model.current.anomaly_model import load_alert_params
+    from sample_processing.model.current.anomaly_model import DEFAULT_PARAMS_PATH, load_alert_params, load_model_params as load_current_model_params
     from sample_processing.model.baseline.anomaly_model import (
         AnomalyModel as BaselineModel,
         load_pipeline_params as load_baseline_pipeline_params,
@@ -252,6 +308,23 @@ def compare_baseline_vs_current(
 
     resolved_data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR
     incidents_by_scenario = load_incidents_by_scenario(labels_path)
+
+    # Resolve model cache version for traceability tags and param source.
+    from analysis.model_cache import DEFAULT_CACHE_ROOT as _CACHE_ROOT
+    _yaml_from_cache: dict | None = None
+    _model_cache_notes = ""
+    try:
+        if str(model_version) == "latest":
+            _global_meta = json.loads((_CACHE_ROOT / "meta.json").read_text())
+            _resolved_model_version = int(_global_meta.get("latest_version", 0))
+        else:
+            _resolved_model_version = int(model_version)
+        _version_meta = json.loads((_CACHE_ROOT / f"v{_resolved_model_version}" / "meta.json").read_text())
+        model_cache_version_tag = f"v{_resolved_model_version}"
+        _model_cache_notes = str(_version_meta.get("notes", ""))
+        _yaml_from_cache = _version_meta.get("yaml_snapshot")
+    except (FileNotFoundError, KeyError, ValueError, OSError):
+        model_cache_version_tag = "unknown"
 
     if full_df is not None:
         _df = full_df.copy()
@@ -290,6 +363,25 @@ def compare_baseline_vs_current(
         else load_alert_params()
     )
 
+    current_model_defaults = load_current_model_params()
+    _pipeline_skip = {"model_window_size_hours", "window_overlap_hours"}
+    current_model_params_flat = {
+        k: v
+        for k, v in current_model_defaults.model_dump().items()
+        if isinstance(v, (int, float, bool, str)) and k not in _pipeline_skip
+    }
+
+    if _yaml_from_cache is not None:
+        _raw_yaml = _yaml_from_cache
+    else:
+        import yaml
+        _raw_yaml = yaml.safe_load(DEFAULT_PARAMS_PATH.read_text())
+    if isinstance(_raw_yaml, dict) and "groups" in _raw_yaml:
+        for _gname, _gvals in _raw_yaml["groups"].items():
+            for _gparam, _gval in _gvals.items():
+                if isinstance(_gval, (int, float, bool, str)):
+                    current_model_params_flat[f"groups.{_gname}.{_gparam}"] = _gval
+
     pipeline_params: dict[str, Any] = {
         "n_scenarios": len(ordered_ids),
         "window_hours": float(baseline_pipeline.model_window_size_hours),
@@ -297,6 +389,8 @@ def compare_baseline_vs_current(
             baseline_pipeline.model_window_size_hours - baseline_pipeline.window_overlap_hours
         ),
     }
+
+    data_version = _data_digest(resolved_data_dir)
 
     mlflow.set_tracking_uri(_TRACKING_URI)
     mlflow.set_experiment("baseline-vs-current")
@@ -313,11 +407,14 @@ def compare_baseline_vs_current(
     _log_model_run(
         baseline_report,
         model_tag="baseline",
-        extra_params={
+        model_params={
             "z_threshold": int(baseline_model_params.z_threshold),
             "window_anomaly_ratio": float(baseline_model_params.window_anomaly_ratio),
         },
         pipeline_params=pipeline_params,
+        alert_params_dict=None,
+        data_digest=data_version,
+        model_cache_version="n/a",
     )
 
     # --- Run B: current model (via FastAPI test client) ---
@@ -348,8 +445,12 @@ def compare_baseline_vs_current(
     _log_model_run(
         current_report,
         model_tag="current",
-        extra_params=alert_params_flat,
+        model_params=current_model_params_flat,
         pipeline_params=pipeline_params,
+        alert_params_dict=alert_params_flat,
+        data_digest=data_version,
+        model_cache_version=model_cache_version_tag,
+        model_cache_notes=_model_cache_notes,
     )
 
     print("Done. Open 'mlflow ui' from the repo root to view results.")

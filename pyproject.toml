@@ -1,7 +1,7 @@
 [project]
-name = "sample_processing"
+name = "IndustrialTimeSeriesAnomalyDetection"
 version = "0.1.0"
-description = "Anomaly detection API"
+description = "Industrial Sensor Anomaly Detection API"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
