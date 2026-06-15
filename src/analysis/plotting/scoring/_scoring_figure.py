@@ -57,7 +57,6 @@ def _build_sigmoid_scoring_figure(
     use_index: bool,
     residual_ymin: float,
 ) -> plt.Figure:
-    scored_display = payload["scored_display"]
     batch_df_plot = payload["batch_df_plot"]
     incidents = payload["incidents"]
     raw_time_values = payload["time_values"]

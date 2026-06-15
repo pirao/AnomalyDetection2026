@@ -10,14 +10,10 @@ presenting incident-window data reliably triggers an alert).
 
 from __future__ import annotations
 
-import pytest
-
 from tests.conftest import (
     _REF_ANOMALOUS,
     _REF_FIT,
     _REF_NORMAL,
-    df_to_data_points,
-    load_scenario,
 )
 
 # ── /health ───────────────────────────────────────────────────────────────────

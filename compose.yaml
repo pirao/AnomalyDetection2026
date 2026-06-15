@@ -17,3 +17,24 @@ services:
     command: uv run pytest src/tests/test_evaluation.py -v --tb=short
     profiles:
       - inference-test
+
+  # make notebooks - JupyterLab with the analysis/notebook dependency stack.
+  # Only venv-free directories are mounted so the container's Linux .venv is not
+  # shadowed by the host (Windows) one.
+  notebooks:
+    build:
+      context: .
+      args:
+        INSTALL_NOTEBOOKS: "true"
+    command: >
+      uv run jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
+      --allow-root --ServerApp.token='' --ServerApp.root_dir=/app
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data
+      - ./labels:/app/labels
+      - ./cache:/app/cache
+    profiles:
+      - notebooks

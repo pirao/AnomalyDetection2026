@@ -1,3 +1,5 @@
+"""Priority-aware alert state machine for current model predictions."""
+
 from __future__ import annotations
 
 from ..interface import AlertDecision, AlertParams, PredictOutput
@@ -240,6 +242,7 @@ class AlertEngine:
         }
 
     def predict(self, prediction: PredictOutput) -> AlertDecision:
+        """Advance alert state by one prediction batch and return a decision."""
         self.batch_index += 1
         if self.global_alert_cooldown > 0:
             self.global_alert_cooldown -= 1
@@ -798,4 +801,5 @@ class AlertEngine:
         )
 
     def reset(self) -> None:
+        """Reset alert state while preserving the current alert parameters."""
         self.__init__(self.params)

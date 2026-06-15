@@ -64,7 +64,7 @@ Zero false positives were observed across 7 no-event sensor scenarios. Four scen
 |   |-- 01_eda.ipynb
 |   |-- 02_model_debugging.ipynb
 |   |-- assets/                     # Maintained notebook source assets
-|   `-- _generated/                 # Reference image exports
+|   `-- _images/                    # Reference image exports
 |-- data/                           # Private data placeholder
 |-- labels/                         # Private label placeholder
 |-- cache/                          # Local fitted-model cache placeholder
@@ -124,15 +124,15 @@ The model is intentionally small and easy to inspect. It does three things:
 
 The example below shows one scenario from the private benchmark. The top rows compare `fit` and `pred`, the middle rows show the normalized distance from the baseline, and the bottom rows show how channel scores become a final fusion score.
 
-![Sigmoid scoring example](notebooks/_generated/widget_exports/sigmoid_scoring/scenario_2.png)
+![Sigmoid scoring example](notebooks/_images/widget_exports/sigmoid_scoring/scenario_2.png)
 
 Scenario 2 is useful because the model sees many anomalous points, not just one clean spike. The alert layer uses that stream of detections as input, then decides when an alarm is worth emitting.
 
-![Scenario 2 API replay](notebooks/_generated/widget_exports/api_replay/scenario_2.png)
+![Scenario 2 API replay](notebooks/_images/widget_exports/api_replay/scenario_2.png)
 
 In this replay, the model produces many anomaly markers, but the API does not alert on every one of them. Pending states, grouped-channel confirmation, and cooldown rules turn the noisy detection stream into a small number of alerts at the relevant moment.
 
-More exported examples are available in [notebooks/_generated/widget_exports](notebooks/_generated/widget_exports), including sigmoid-scoring views and API replay views for the private benchmark scenarios.
+More exported examples are available in [notebooks/_images/widget_exports](notebooks/_images/widget_exports), including sigmoid-scoring views and API replay views for the private benchmark scenarios.
 
 After scoring, the alarm logic groups related channels so the API does not emit a separate alarm for every sensor axis. The hierarchy image shows the rule of thumb: start with individual channel alarms, promote to a grouped alarm when related channels move together, and use reset/cooldown rules to avoid reporting the same event repeatedly.
 
@@ -155,7 +155,7 @@ In short: the baseline model finds unusual movement, and the alarm hierarchy dec
 - Hyperparameters are versioned in `src/sample_processing/hyperparameters/`.
 - Fitted models are written locally under `cache/models/v{N}/`; these `.pkl` artifacts are ignored.
 - `METRICS.md` is ignored for local/private report experiments.
-- Reference visualizations in `notebooks/_generated/` are intentionally kept in the public repo.
+- Reference visualizations in `notebooks/_images/` are intentionally kept in the public repo.
 
 ## License
 

@@ -1,3 +1,5 @@
+"""Pydantic contracts for current model scoring and alerting."""
+
 from datetime import datetime
 from typing import Literal, Sequence
 
@@ -5,6 +7,8 @@ from pydantic import BaseModel, Field
 
 
 class DataPoint(BaseModel):
+    """Single timestamped sensor reading in the internal model format."""
+
     timestamp: datetime = Field(..., description="UTC datetime of the time the data point was collected")
     uptime: bool = Field(..., description="Whether the data point is during uptime")
     vel_x: float = Field(..., description="Vibration velocity component along the X axis")
@@ -16,6 +20,8 @@ class DataPoint(BaseModel):
 
 
 class TimeSeries(BaseModel):
+    """Ordered collection of model-format sensor readings."""
+
     data: Sequence[DataPoint] = Field(
         ...,
         description="List of datapoints ordered in time.",
@@ -23,28 +29,35 @@ class TimeSeries(BaseModel):
 
     @property
     def length(self) -> int:
+        """Number of points in the time series."""
         return len(self.data)
 
     @property
     def last_timestamp(self) -> datetime:
+        """Timestamp of the final point, or ValueError when empty."""
         if not self.data:
             raise ValueError("TimeSeries has no data")
         return self.data[-1].timestamp
 
     @property
     def first_timestamp(self) -> datetime:
+        """Timestamp of the first point, or ValueError when empty."""
         if not self.data:
             raise ValueError("TimeSeries has no data")
         return self.data[0].timestamp
 
 
 class Weights(BaseModel):
+    """Fitted scalar baseline statistics retained for model state."""
+
     fitted: bool = False
     mean: float = 0.0
     std: float = 1.0
 
 
 class ModelParams(BaseModel):
+    """Current detector and fusion hyperparameters loaded from YAML."""
+
     model_config = {"protected_namespaces": ()}
 
     alpha_vel: float = 1.52
@@ -64,6 +77,8 @@ class ModelParams(BaseModel):
 
 
 class PipelineParams(BaseModel):
+    """Shared replay-window parameters for benchmark-style evaluation."""
+
     model_config = {"protected_namespaces": ()}
 
     model_window_size_hours: float = 2.0
@@ -71,6 +86,8 @@ class PipelineParams(BaseModel):
 
 
 class PredictOutput(BaseModel):
+    """Batch-level anomaly features passed from the model to alerting."""
+
     anomaly_status: bool
     timestamp: datetime
     occupancy_score: float = 0.0
@@ -82,6 +99,8 @@ class PredictOutput(BaseModel):
 
 
 class AlertParams(BaseModel):
+    """State-machine thresholds and holdback settings for alerting."""
+
     individual_alert_mode: Literal["exclusive", "shared"] = "exclusive"
     relative_threshold: float = 0.20
     min_channel_delta: float = 0.0
@@ -103,6 +122,8 @@ class AlertParams(BaseModel):
 
 
 class AlertDecision(BaseModel):
+    """Final alert decision emitted by the alert engine."""
+
     alert: bool
     timestamp: datetime
     message: str
@@ -114,5 +135,7 @@ class AlertDecision(BaseModel):
 
 
 class TrueIncident(BaseModel):
+    """Labeled incident window used by evaluation helpers."""
+
     start: datetime
     end: datetime

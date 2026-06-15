@@ -1,3 +1,5 @@
+"""FastAPI service exposing per-sensor fit and predict endpoints."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -37,21 +39,29 @@ class DataPoint(BaseModel):
 
 
 class FitRequest(BaseModel):
+    """Request body for fitting a sensor-specific model."""
+
     sensor_id: str
     data: list[DataPoint]
 
 
 class FitResponse(BaseModel):
+    """Response returned after a sensor model is trained."""
+
     sensor_id: str
     status: str
 
 
 class PredictRequest(BaseModel):
+    """Request body for scoring a sensor batch."""
+
     sensor_id: str
     data: list[DataPoint]
 
 
 class PredictResponse(BaseModel):
+    """API response with anomaly and alert flags for the submitted batch."""
+
     sensor_id: str
     anomaly: bool
     alert: bool
@@ -95,6 +105,7 @@ def _scenario_id_from_sensor_id(sensor_id: str) -> int | None:
 
 @app.post("/fit", response_model=FitResponse)
 def fit(req: FitRequest):
+    """Fit or refit the model for one sensor and reset its alert state."""
     if not req.data:
         raise HTTPException(status_code=422, detail="data must not be empty")
     ts = _to_timeseries(req.data)
@@ -110,6 +121,7 @@ def fit(req: FitRequest):
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
+    """Score one sensor batch using its fitted model and alert engine."""
     if not req.data:
         raise HTTPException(status_code=422, detail="data must not be empty")
     model = _models.get(req.sensor_id)
@@ -131,4 +143,5 @@ def predict(req: PredictRequest):
 
 @app.get("/health")
 def health():
+    """Return service health for orchestration and contract tests."""
     return {"status": "ok"}

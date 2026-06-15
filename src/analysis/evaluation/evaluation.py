@@ -428,76 +428,6 @@ def build_inference_test_notebook_summary(report: dict[str, Any]) -> dict[str, A
     }
 
 
-def _print_inference_test_report(report: dict[str, Any]) -> None:
-    """Print the canonical scenario-level replay metrics and status table."""
-    summary = report.get("summary", {})
-    print(
-        "TP={tp}  FP={fp}  FN={fn}  TN={tn}".format(
-            tp=int(summary.get("tp", 0)),
-            fp=int(summary.get("fp", 0)),
-            fn=int(summary.get("fn", 0)),
-            tn=int(summary.get("tn", 0)),
-        )
-    )
-    print(
-        "Precision={precision:.2%}  Recall={recall:.2%}  F1={f1:.2f}".format(
-            precision=float(summary.get("precision", 0.0)),
-            recall=float(summary.get("recall", 0.0)),
-            f1=float(summary.get("f1", 0.0)),
-        )
-    )
-
-    scenarios_df = report.get("scenarios_df", pd.DataFrame())
-    if not isinstance(scenarios_df, pd.DataFrame) or scenarios_df.empty:
-        print("No scenario rows to display.")
-        return
-
-    table_cols = [
-        "scenario_id",
-        "status",
-        "n_incidents",
-        "n_alerts",
-        "has_alert_in_window",
-        "all_incident_windows_hit",
-    ]
-    available_cols = [col for col in table_cols if col in scenarios_df.columns]
-    table_df = scenarios_df.loc[:, available_cols].copy()
-    print(table_df.to_string(index=False))
-
-    worst_df = report.get("worst_scenarios_df", pd.DataFrame())
-    if isinstance(worst_df, pd.DataFrame) and not worst_df.empty:
-        print("\nWorst scenarios:")
-        cols = [
-            "scenario_id",
-            "scenario_group",
-            "status",
-            "missed_incident_count",
-            "covered_incident_count",
-            "n_alerts",
-        ]
-        print(worst_df.loc[:, [c for c in cols if c in worst_df.columns]].to_string(index=False))
-
-    best_alt_df = report.get("best_group_reassignments_df", pd.DataFrame())
-    if isinstance(best_alt_df, pd.DataFrame) and not best_alt_df.empty:
-        print("\nNon-worse alternative group assignments:")
-        cols = [
-            "scenario_id",
-            "current_group",
-            "candidate_group",
-            "comparison_outcome",
-            "current_status",
-            "candidate_status",
-            "current_missed_incident_count",
-            "candidate_missed_incident_count",
-            "current_covered_incident_count",
-            "candidate_covered_incident_count",
-            "current_n_alerts",
-            "candidate_n_alerts",
-            "delta_n_alerts",
-        ]
-        print(best_alt_df.loc[:, [c for c in cols if c in best_alt_df.columns]].to_string(index=False))
-
-
 def _df_to_api_payload(
     df: pd.DataFrame,
     *,
@@ -930,7 +860,6 @@ def run_inference_test_evaluation(
                 sid = int(row["scenario_id"])
                 current_group = str(row["scenario_group"])
                 fit_df, pred_df = scenario_frames[sid]
-                candidate_rows: list[dict[str, Any]] = []
                 for candidate_group in GROUP_DEFINITIONS.keys():
                     if candidate_group == current_group:
                         continue

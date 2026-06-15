@@ -41,7 +41,7 @@ from ._layout import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_WIDGET_EXPORT_DIR = _REPO_ROOT / "notebooks" / "_generated" / "widget_exports"
+DEFAULT_WIDGET_EXPORT_DIR = _REPO_ROOT / "notebooks" / "_images" / "widget_exports"
 
 __all__ = [
     "DEFAULT_WIDGET_EXPORT_DIR",

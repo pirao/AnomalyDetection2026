@@ -6,6 +6,7 @@ from __future__ import annotations
 def pending_events_debug(
     pending_priority_events: dict[str, dict[str, object]],
 ) -> list[dict[str, object]]:
+    """Return stable debug rows for lower-priority pending events."""
     rows: list[dict[str, object]] = []
     for key in sorted(pending_priority_events):
         event = pending_priority_events[key]
@@ -36,6 +37,7 @@ def queue_pending_event(
     *,
     batch_index: int,
 ) -> None:
+    """Store or update an event suppressed by a higher-priority candidate."""
     key = str(event["key"])
     if key not in pending_priority_events:
         event["first_eligible_at"] = batch_index
@@ -59,6 +61,7 @@ def pending_event_resolution_state(
     group6_forming: bool,
     anomaly_status: bool,
 ) -> tuple[str, str]:
+    """Classify whether a suppressed event is blocked, superseded, or releasable."""
     if suppressor == "group-6":
         if current_group_priority >= 2:
             return "superseded", "group-6-confirmed"
@@ -80,6 +83,7 @@ def drop_pending_events_covered_by_group(
     current_priority: int,
     group_channels: list[str],
 ) -> dict[str, dict[str, object]]:
+    """Remove pending events whose priority is covered by an active group."""
     if current_priority < 0:
         return pending_priority_events
     kept: dict[str, dict[str, object]] = {}

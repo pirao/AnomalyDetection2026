@@ -1,3 +1,5 @@
+"""Current detector facade around the scoring backend and YAML parameters."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -75,6 +77,8 @@ def load_alert_params(path: Path = DEFAULT_ALERT_PARAMS_PATH) -> AlertParams:
 
 
 class AnomalyModel:
+    """Scenario-aware anomaly detector backed by the current scoring pipeline."""
+
     def __init__(
         self,
         params_path: Path | None = None,
@@ -96,18 +100,11 @@ class AnomalyModel:
         )
 
     def fit(self, fitting_samples: TimeSeries) -> None:
+        """Fit baseline weights from normal samples for this model instance."""
         mean, std = self._backend.fit(fitting_samples)
         self.weights = Weights(fitted=True, mean=mean, std=std)
         if hasattr(self._backend, "weights"):
             self._backend.weights = self.weights
-
-    def predict_detailed(self, samples: TimeSeries) -> "pd.DataFrame":
-        """Return the per-sample scored DataFrame with d_* columns for diagnostics."""
-        if not self.weights.fitted:
-            raise RuntimeError("Model not fitted")
-        import pandas as pd  # local import to keep module-level imports minimal
-
-        return self._backend._score_df(samples)
 
     def predict_batch_details(
         self,
@@ -137,6 +134,7 @@ class AnomalyModel:
         )
 
     def predict(self, samples: TimeSeries) -> PredictOutput:
+        """Score one batch and return the compact output consumed by alerting."""
         if not self.weights.fitted:
             raise RuntimeError("Model not fitted")
         if not samples.data:

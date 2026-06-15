@@ -9,3 +9,6 @@ inference-test:
 
 test:
 	docker compose run --rm --build test
+
+notebooks:
+	docker compose up --build notebooks

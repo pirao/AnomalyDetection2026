@@ -1,0 +1,34 @@
+# Keep the build context small and avoid copying the host (Windows) virtualenv
+# into the Linux image. NOTE: data/ and labels/ are intentionally NOT ignored —
+# the dockerized `inference-test` service needs the private benchmark inputs.
+
+# Virtualenv / VCS
+.venv/
+.git/
+.gitignore
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+pytest-cache-files-*/
+
+# Notebook + experiment outputs (regenerated; not build inputs)
+.ipynb_checkpoints/
+notebooks/_generated/
+mlflow.db
+mlruns/
+mlartifacts/
+notebooks/mlruns/
+
+# Local fitted-model artifacts
+cache/models/
+*.pkl
+
+# Assistant / tooling config
+.claude/
+.superpowers/
+.worktrees/
+*.claude

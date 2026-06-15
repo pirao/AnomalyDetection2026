@@ -1,7 +1,11 @@
+"""Locking baseline alert engine used by comparison experiments."""
+
 from .interface import AlertDecision, PredictOutput
 
 
 class AlertEngine:
+    """Emit one alert for the first anomalous baseline prediction."""
+
     def __init__(
         self,
     ):
@@ -11,6 +15,7 @@ class AlertEngine:
         return prediction.anomaly_status
 
     def predict(self, prediction: PredictOutput) -> AlertDecision:
+        """Apply one-shot lockout to a baseline anomaly prediction."""
         if self.locked:
             return AlertDecision(
                 alert=False,

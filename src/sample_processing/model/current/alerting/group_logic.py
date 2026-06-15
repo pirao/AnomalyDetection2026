@@ -15,6 +15,7 @@ def build_group_candidate(
     *,
     enable_group6: bool,
 ) -> dict[str, object] | None:
+    """Build the highest-priority group candidate from active channels."""
     active_set = set(active_channels)
     vel_candidate: dict[str, object] | None = None
     accel_candidate: dict[str, object] | None = None

@@ -1,3 +1,5 @@
+"""Velocity-norm baseline detector used for MLflow comparison runs."""
+
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +35,8 @@ def load_pipeline_params(path: Path = DEFAULT_PIPELINE_PARAMS_PATH) -> PipelineP
 
 
 class AnomalyModel:
+    """Simple baseline detector using velocity norm z-scores."""
+
     def __init__(self, params_path: Path | None = None):
         self.weights = Weights()
         self.params = load_model_params(params_path or DEFAULT_PARAMS_PATH)
@@ -48,6 +52,7 @@ class AnomalyModel:
         return np.linalg.norm(vel, axis=1)
 
     def fit(self, fitting_samples: TimeSeries) -> None:
+        """Fit scalar mean and standard deviation on baseline samples."""
         X = self._featuring(fitting_samples)
 
         self.weights = Weights(
@@ -66,6 +71,7 @@ class AnomalyModel:
         return float(np.sum(anomalous_points) / len(z))
 
     def predict(self, samples: TimeSeries) -> PredictOutput:
+        """Return whether a batch exceeds the configured deviation ratio."""
         if not self.weights.fitted:
             raise RuntimeError("Model not fitted")
         if not samples.data:

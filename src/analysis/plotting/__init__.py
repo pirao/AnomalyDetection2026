@@ -11,8 +11,6 @@ from .scoring import (
     create_group_distribution_widget,
     create_sigmoid_global_residual_widget,
     create_sigmoid_scoring_widget,
-    plot_alert_hierarchy_diagram,
-    plot_alert_hierarchy_trace_scenario3,
 )
 from .style import set_plot_style
 
@@ -25,6 +23,4 @@ __all__ = [
     "create_scenario_inspector",
     "create_sigmoid_global_residual_widget",
     "create_sigmoid_scoring_widget",
-    "plot_alert_hierarchy_diagram",
-    "plot_alert_hierarchy_trace_scenario3",
 ]
