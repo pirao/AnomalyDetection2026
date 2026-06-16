@@ -18,33 +18,31 @@ The pipeline (windowing) config is shared across models and read from
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from .model_cache import (
+    compute_config_hash,
+    data_digest,
+    git_revision,
+    model_fingerprint,
+    _published_version_meta
+)
 
-def _data_digest(data_dir: Path) -> str:
-    """MD5 fingerprint of all parquet files in data_dir.
 
-    Sorted by filename for determinism across OSes. Includes the filename in
-    the hash so that renaming a file (same bytes, different name) also changes
-    the digest.
-    """
-    h = hashlib.md5()
-    for f in sorted(data_dir.glob("*.parquet")):
-        h.update(f.name.encode())
-        h.update(f.read_bytes())
-    return h.hexdigest()[:12]
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+# This module lives at src/analysis/mlflow/mlflow_experiments.py -> repo root is 3 up.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # MLflow's file store (mlruns/) is deprecated and disabled in current versions,
 # so we track to a SQLite DB at the repo root. View with:
 #   mlflow ui --backend-store-uri sqlite:///mlflow.db
 _TRACKING_URI = f"sqlite:///{(_REPO_ROOT / 'mlflow.db').as_posix()}"
+
+DEFAULT_CACHE_ROOT = _REPO_ROOT / "cache/models"
 
 
 def _evaluate_baseline_scenarios(
@@ -94,6 +92,54 @@ def _evaluate_baseline_scenarios(
     return alerts_by_scenario
 
 
+def _evaluate_current_scenarios_from_cache(
+    scenario_frames: dict[int, tuple[pd.DataFrame, pd.DataFrame]],
+    ordered_ids: list[int],
+    fitted_models: dict[int, Any],
+    alert_params: Any,
+    *,
+    time_col: str = "sampled_at",
+) -> dict[int, list[str]]:
+    """Run the current model from pre-fitted cache weights on the pred split only.
+
+    Mirrors _evaluate_baseline_scenarios but skips re-fitting — the weights come
+    from model_cache rather than from the fit split. This means the evaluated
+    artifact is identical to what register_bundle packages, making the fingerprint
+    join in fetch_evaluation_metrics strictly valid.
+    """
+    from analysis.evaluation.simulation import simulate_api_replay_one_scenario
+
+    alerts_by_scenario: dict[int, list[str]] = {}
+    for sid in ordered_ids:
+        _, pred_df = scenario_frames[sid]
+        if pred_df.empty:
+            alerts_by_scenario[sid] = []
+            continue
+
+        model = fitted_models.get(sid)
+        if model is None:
+            alerts_by_scenario[sid] = []
+            continue
+
+        replay_df = simulate_api_replay_one_scenario(
+            fit_df=pd.DataFrame(),
+            pred_df=pred_df,
+            model=model,
+            alert_params=alert_params,
+            time_col=time_col,
+        )
+        if replay_df.empty or "alert" not in replay_df.columns:
+            alerts_by_scenario[sid] = []
+            continue
+
+        ts_col = "anchored_timestamp" if "anchored_timestamp" in replay_df.columns else "timestamp"
+        alerts_by_scenario[sid] = [
+            str(ts) for ts in replay_df.loc[replay_df["alert"], ts_col]
+        ]
+
+    return alerts_by_scenario
+
+
 def _build_experiment_report(
     alerts_by_scenario: dict[int, list[str]],
     incidents_by_scenario: dict[int, list[dict[str, Any]]],
@@ -114,6 +160,42 @@ def _build_experiment_report(
     return report
 
 
+def _purge_prior_runs(client: Any, experiment_id: str, model_tag: str) -> None:
+    """Delete the prior run tree for ``model_tag`` plus any orphaned children.
+
+    The previous cleanup deleted only the parent run (it carries ``tags.model``);
+    the nested per-scenario children are tagged with ``scenario_id`` instead, so
+    they survived every re-run and accumulated in the experiment. This deletes:
+    the matching parent runs, their children (``tags.mlflow.parentRunId``), and
+    any orphan whose parent is no longer active.
+    """
+    from mlflow.entities import ViewType
+
+    parents = client.search_runs(
+        experiment_ids=[experiment_id],
+        filter_string=f"tags.model = '{model_tag}'",
+        run_view_type=ViewType.ACTIVE_ONLY,
+        max_results=1000,
+    )
+    parent_ids = {p.info.run_id for p in parents}
+
+    all_runs = client.search_runs(
+        experiment_ids=[experiment_id],
+        run_view_type=ViewType.ACTIVE_ONLY,
+        max_results=50000,
+    )
+    active_ids = {r.info.run_id for r in all_runs}
+
+    to_delete = set(parent_ids)
+    for r in all_runs:
+        parent = r.data.tags.get("mlflow.parentRunId")
+        if parent is not None and (parent in parent_ids or parent not in active_ids):
+            to_delete.add(r.info.run_id)
+
+    for run_id in to_delete:
+        client.delete_run(run_id)
+
+
 def _log_model_run(
     report: dict[str, Any],
     *,
@@ -122,6 +204,10 @@ def _log_model_run(
     pipeline_params: dict[str, Any],
     alert_params_dict: dict[str, Any] | None = None,
     data_digest: str = "",
+    config_hash: str = "",
+    git_sha: str = "",
+    git_dirty: str = "",
+    fingerprint: str = "",
     model_cache_version: str = "",
     model_cache_notes: str = "",
 ) -> None:
@@ -150,21 +236,22 @@ def _log_model_run(
             {f"alert.{k}": v for k, v in alert_params_dict.items() if isinstance(v, (int, float, bool, str))}
         )
 
-    # Delete any existing run for this model_tag so we don't accumulate stale runs.
+    # Delete any existing run tree for this model_tag (parent + children) plus
+    # orphans, so we don't accumulate stale runs.
     client = mlflow.tracking.MlflowClient()
     _exp = client.get_experiment_by_name("baseline-vs-current")
     if _exp is not None:
-        for _r in client.search_runs(
-            experiment_ids=[_exp.experiment_id],
-            filter_string=f"tags.model = '{model_tag}'",
-        ):
-            client.delete_run(_r.info.run_id)
+        _purge_prior_runs(client, _exp.experiment_id, model_tag)
 
     with mlflow.start_run(
         run_name=model_tag,
         tags={
             "model": model_tag,
             "data_digest": data_digest,
+            "config_hash": config_hash,
+            "git_sha": git_sha,
+            "git_dirty": git_dirty,
+            "fingerprint": fingerprint,
             "model_cache_version": model_cache_version,
             "model_cache_notes": model_cache_notes,
         },
@@ -202,8 +289,9 @@ def _log_model_run(
             })
 
             _ds = mlflow.data.from_pandas(
-                scenarios_df[["scenario_id", "status", "n_alerts", "n_incidents"]],
-                source=str(_REPO_ROOT / "data"),
+                scenarios_df[["scenario_id", "status", "n_alerts", "n_incidents"]].astype(
+                    {"scenario_id": "float64", "n_alerts": "float64", "n_incidents": "float64"}
+                ),
                 name="sensor_scenarios",
                 digest=data_digest or None,
             )
@@ -257,7 +345,7 @@ def compare_baseline_vs_current(
 ) -> dict[str, dict[str, Any]]:
     """Compare baseline and current model in MLflow experiment "baseline-vs-current".
 
-    Logs two parent runs to the repo-root ``mlruns/`` directory:
+    Logs two parent runs to the SQLite tracking store (``mlflow.db``):
     - Run A (model=baseline): velocity-only L2-norm, evaluated directly without API
     - Run B (model=current): 6-channel sigmoid, evaluated through the FastAPI test client
 
@@ -296,7 +384,6 @@ def compare_baseline_vs_current(
     from analysis.evaluation.evaluation import (
         _prepare_scenario_frames,
         _scenario_ids_from_data_dir,
-        run_inference_test_evaluation,
     )
     from analysis.evaluation.incidents import load_incidents_by_scenario
     from analysis.evaluation.simulation import DEFAULT_DATA_DIR
@@ -310,7 +397,7 @@ def compare_baseline_vs_current(
     incidents_by_scenario = load_incidents_by_scenario(labels_path)
 
     # Resolve model cache version for traceability tags and param source.
-    from analysis.model_cache import DEFAULT_CACHE_ROOT as _CACHE_ROOT
+    from .model_cache import DEFAULT_CACHE_ROOT as _CACHE_ROOT
     _yaml_from_cache: dict | None = None
     _model_cache_notes = ""
     try:
@@ -390,7 +477,19 @@ def compare_baseline_vs_current(
         ),
     }
 
-    data_version = _data_digest(resolved_data_dir)
+    data_version = data_digest(resolved_data_dir)
+
+    # Code fingerprint (same for both runs in this invocation).
+    git_info = git_revision()
+
+    # Config fingerprints: each model's own hyperparameters + shared pipeline.
+    baseline_config = {
+        "z_threshold": int(baseline_model_params.z_threshold),
+        "window_anomaly_ratio": float(baseline_model_params.window_anomaly_ratio),
+        "pipeline": pipeline_params,
+    }
+    baseline_cfg_hash = compute_config_hash(baseline_config)
+    baseline_fp = model_fingerprint(data_version, baseline_cfg_hash, git_info["git_sha"])
 
     mlflow.set_tracking_uri(_TRACKING_URI)
     mlflow.set_experiment("baseline-vs-current")
@@ -414,34 +513,47 @@ def compare_baseline_vs_current(
         pipeline_params=pipeline_params,
         alert_params_dict=None,
         data_digest=data_version,
+        config_hash=baseline_cfg_hash,
+        git_sha=git_info["git_sha"],
+        git_dirty=git_info["git_dirty"],
+        fingerprint=baseline_fp,
         model_cache_version="n/a",
     )
 
-    # --- Run B: current model (via FastAPI test client) ---
-    # Re-assert tracking URI / experiment defensively in case the evaluation
-    # call below ever touches global MLflow state.
-    print("Evaluating current model ...")
-    current_report = run_inference_test_evaluation(
-        full_df=full_df,
-        data_dir=data_dir,
-        labels_path=labels_path,
-        alert_params=effective_alert_params,
-        scenario_ids=ordered_ids,
-        scenario_col=scenario_col,
-        split_col=split_col,
-        fit_value=fit_value,
-        pred_value=pred_value,
+    # --- Run B: current model (from pre-fitted cache, no refit) ---
+    # Load the exact weights that register_bundle will package, so the
+    # fingerprint join in fetch_evaluation_metrics is strictly valid.
+    print("Evaluating current model from cache ...")
+    from .model_cache import load_fitted_models as _load_fitted_models
+    _fitted_models, _ = _load_fitted_models(version=_resolved_model_version)
+
+    
+    current_alerts = _evaluate_current_scenarios_from_cache(
+        scenario_frames,
+        ordered_ids,
+        _fitted_models,
+        effective_alert_params,
         time_col=time_col,
-        include_group_reassignment_analysis=False,
     )
     mlflow.set_tracking_uri(_TRACKING_URI)
     mlflow.set_experiment("baseline-vs-current")
+    current_report = _build_experiment_report(current_alerts, incidents_by_scenario, ordered_ids)
 
     alert_params_flat = {
         k: v
         for k, v in effective_alert_params.model_dump().items()
         if isinstance(v, (int, float, bool, str))
     }
+    current_config = {
+        "model": current_model_params_flat,
+        "alert": alert_params_flat,
+        "pipeline": pipeline_params,
+    }
+    current_cfg_hash = compute_config_hash(current_config)
+
+    _cache_meta = _published_version_meta(DEFAULT_CACHE_ROOT, _resolved_model_version)
+    current_fp = _cache_meta.get("fingerprint", "")
+    
     _log_model_run(
         current_report,
         model_tag="current",
@@ -449,6 +561,10 @@ def compare_baseline_vs_current(
         pipeline_params=pipeline_params,
         alert_params_dict=alert_params_flat,
         data_digest=data_version,
+        config_hash=current_cfg_hash,
+        git_sha=git_info["git_sha"],
+        git_dirty=git_info["git_dirty"],
+        fingerprint=current_fp,
         model_cache_version=model_cache_version_tag,
         model_cache_notes=_model_cache_notes,
     )

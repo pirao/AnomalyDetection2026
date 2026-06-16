@@ -1,6 +1,6 @@
 """Notebook and offline analysis helpers built on top of sample_processing."""
 
-from .evaluation import assign_incident_label, run_inference_test_evaluation
+from ..evaluation import assign_incident_label, run_inference_test_evaluation
 from .model_cache import fit_and_save, list_versions, load_fitted_models
 
 __all__ = [

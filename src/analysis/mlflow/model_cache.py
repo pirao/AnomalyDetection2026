@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pickle
@@ -19,12 +20,17 @@ __all__ = [
     "DEFAULT_CACHE_ROOT",
     "DEFAULT_DATA_DIR",
     "DEFAULT_HYPERPARAMS_PATH",
+    "compute_config_hash",
+    "data_digest",
     "fit_and_save",
+    "git_revision",
     "list_versions",
     "load_fitted_models",
+    "model_fingerprint",
 ]
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+# This module lives at src/analysis/mlflow/model_cache.py -> repo root is 3 up.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = _REPO_ROOT / "data"
 DEFAULT_HYPERPARAMS_PATH = (
     _REPO_ROOT
@@ -42,6 +48,76 @@ def _resolve(p: Path, base: Path = _REPO_ROOT) -> Path:
 def _log(message: str) -> None:
     """Emit a short status line for interactive notebook workflows."""
     print(message)
+
+
+# ── Fingerprinting helpers (shared with mlflow_experiments.py) ────────────────
+# These answer the three independent "did it change?" questions for a model
+# version: did the DATA change, did the CONFIG change, did the CODE change.
+
+
+def data_digest(data_dir: Path | str) -> str:
+    """MD5 fingerprint (12 hex chars) of all parquet files in ``data_dir``.
+
+    Sorted by filename for determinism across OSes. The filename is hashed too,
+    so renaming a file (same bytes, different name) also changes the digest.
+    """
+    data_dir = _resolve(Path(data_dir))
+    h = hashlib.md5()
+    for f in sorted(data_dir.glob("*.parquet")):
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+def compute_config_hash(config: dict) -> str:
+    """Order-independent MD5 (12 hex chars) of a JSON-serializable config dict.
+
+    ``sort_keys=True`` means re-ordering YAML keys does not change the hash;
+    ``default=str`` tolerates non-JSON values (e.g. Paths, enums).
+    """
+    payload = json.dumps(config, sort_keys=True, default=str).encode()
+    return hashlib.md5(payload).hexdigest()[:12]
+
+
+def git_revision(repo_path: Path = _REPO_ROOT) -> dict[str, str]:
+    """Return ``{"git_sha", "git_dirty"}`` for the repo containing ``repo_path``.
+
+    ``git_sha`` is the short HEAD commit (12 chars). ``git_dirty`` is the string
+    ``"True"``/``"False"`` — a dirty working tree means the recorded sha does NOT
+    faithfully describe the code that produced the artifact. Falls back to
+    ``"unknown"`` when not in a git repo or GitPython is unavailable.
+    """
+    try:
+        import git
+
+        repo = git.Repo(repo_path, search_parent_directories=True)
+        return {
+            "git_sha": repo.head.commit.hexsha[:12],
+            "git_dirty": str(repo.is_dirty()),
+        }
+    except Exception:
+        return {"git_sha": "unknown", "git_dirty": "unknown"}
+
+
+def model_fingerprint(data_digest_value: str, config_hash: str, git_sha: str) -> str:
+    """Combine the three change axes (data + config + code) into one identity hash.
+
+    Two artifacts with the same fingerprint were produced from the same data,
+    the same config and the same committed code — so a new version would be a
+    duplicate. ``git_dirty`` is deliberately NOT folded in: it is recorded
+    separately as a trust flag, not part of identity.
+    """
+    payload = f"{data_digest_value}:{config_hash}:{git_sha}".encode()
+    return hashlib.md5(payload).hexdigest()[:12]
+
+
+def _published_version_meta(cache_root: Path, version: int) -> dict:
+    """Read a published version's ``meta.json``; empty dict if absent."""
+    meta_path = cache_root / f"v{version}" / "meta.json"
+    if not meta_path.exists():
+        return {}
+    with open(meta_path) as f:
+        return json.load(f)
 
 
 def _existing_cache_versions(
@@ -183,6 +259,7 @@ def fit_and_save(
     cache_root: Path | str = DEFAULT_CACHE_ROOT,
     version: int | None = None,
     notes: str = "",
+    skip_if_unchanged: bool = True,
 ) -> int:
     """Read model YAML, fit one AnomalyModel per scenario, write versioned cache.
 
@@ -203,11 +280,17 @@ def fit_and_save(
         ``v{N}`` directory is replaced if it already exists.
     notes :
         Free-text note stored in ``meta.json`` (e.g. "chosen after scaler sweep").
+    skip_if_unchanged :
+        When ``True`` (default) and ``version`` is auto-assigned, skip refitting
+        and return the existing latest version if its ``fingerprint`` (data +
+        config + git sha) matches the current inputs — avoids minting duplicate
+        versions. A dirty working tree disables the skip: the git sha cannot be
+        trusted, so a fresh version is always created.
 
     Returns
     -------
     int
-        The new version number.
+        The new (or, when skipped, the existing unchanged) version number.
     """
     import yaml
 
@@ -217,6 +300,28 @@ def fit_and_save(
 
     with open(hyperparams_path) as f:
         yaml_snapshot = yaml.safe_load(f) or {}
+
+    # Fingerprint the three change axes up front so we can both record them and
+    # detect a no-op refit.
+    dd = data_digest(data_dir)
+    cfg_hash = compute_config_hash(yaml_snapshot)
+    git_info = git_revision()
+    fingerprint = model_fingerprint(dd, cfg_hash, git_info["git_sha"])
+
+    if version is None and skip_if_unchanged:
+        if git_info["git_dirty"] == "True":
+            _log(
+                "Working tree is dirty: git sha is untrustworthy, so a fresh "
+                "version will be created (cannot prove the code is unchanged)."
+            )
+        else:
+            _latest = max(_existing_cache_versions(cache_root, include_tmp=False), default=0)
+            if _latest and _published_version_meta(cache_root, _latest).get("fingerprint") == fingerprint:
+                _log(
+                    f"No change vs v{_latest} (fingerprint {fingerprint}); skipping "
+                    "refit. Pass skip_if_unchanged=False to force a new version."
+                )
+                return _latest
 
     meta_path = cache_root / "meta.json"
     next_version = int(version) if version is not None else _next_cache_version(cache_root)
@@ -256,6 +361,11 @@ def fit_and_save(
         "notes": notes,
         "n_sensors": len(models),
         "baseline_scaler": str(defaults.get("baseline_scaler", "standard")),
+        "data_digest": dd,
+        "config_hash": cfg_hash,
+        "git_sha": git_info["git_sha"],
+        "git_dirty": git_info["git_dirty"],
+        "fingerprint": fingerprint,
         "yaml_snapshot": yaml_snapshot,
     }
     with open(write_dir / "meta.json", "w") as f:
@@ -329,8 +439,10 @@ def list_versions(
 ) -> list[dict]:
     """Return a list of version metadata dicts, sorted by version number.
 
-    Each dict contains: ``version``, ``created_at``, ``notes``,
-    ``n_sensors``, ``baseline_scaler``.
+    Each dict contains: ``version``, ``created_at``, ``notes``, ``n_sensors``,
+    ``baseline_scaler``, plus the change-detection fingerprints ``data_digest``,
+    ``config_hash``, ``git_sha`` and ``fingerprint`` (empty for versions written
+    before fingerprinting was added).
     """
     cache_root = _resolve(Path(cache_root))
     if not cache_root.exists():
@@ -350,6 +462,10 @@ def list_versions(
                 "notes": meta.get("notes", ""),
                 "n_sensors": meta.get("n_sensors"),
                 "baseline_scaler": meta.get("baseline_scaler"),
+                "data_digest": meta.get("data_digest", ""),
+                "config_hash": meta.get("config_hash", ""),
+                "git_sha": meta.get("git_sha", ""),
+                "fingerprint": meta.get("fingerprint", ""),
             }
         )
     return sorted(versions, key=lambda x: x["version"] or 0)

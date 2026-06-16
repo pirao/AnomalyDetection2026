@@ -174,6 +174,7 @@ def summarize_inference_test_metrics(
         "precision": round(float(precision), 3),
         "recall": round(float(recall), 3),
         "f1": round(float(f1), 3),
+        "total_alerts": int(_agg_alerts),
         "alert_efficiency": _agg_efficiency,
     }
     return {

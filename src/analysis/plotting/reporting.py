@@ -1,7 +1,9 @@
 """Notebook display helpers for evaluation results.
 
-Imported by notebooks running in IRV_env (Anaconda), which has seaborn installed.
-Not safe to import from .venv (seaborn is not a declared dependency there).
+Lives in ``plotting`` (notebook-only) so it is never pulled into the production
+import chain: importing ``analysis.evaluation`` / ``analysis.mlflow`` must stay
+``.venv``-safe, and these helpers depend on seaborn + IPython, which are only
+installed in the notebook env (IRV_env / the ``notebooks`` extra).
 """
 
 from __future__ import annotations
@@ -34,10 +36,10 @@ def plot_confusion(ax, df: pd.DataFrame, title: str) -> None:
         linewidths=1,
         linecolor="white",
         square=True,
-        annot_kws={"fontsize": 13, "fontweight": "bold"},
+        annot_kws={"fontsize": 16, "fontweight": "bold"},
         ax=ax,
     )
-    ax.set_title(title, fontsize=11)
+    ax.set_title(title)
     ax.set_xticklabels(["Predicted\nalert", "Predicted\nno-alert"], rotation=0)
     ax.set_yticklabels(["Actual\nincident", "Actual\nhealthy"], rotation=0)
     ax.set_xlabel("")
