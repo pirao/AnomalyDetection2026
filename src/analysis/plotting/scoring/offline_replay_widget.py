@@ -1,4 +1,8 @@
-"""Internal API replay widget aligned with the evaluation/test protocol."""
+"""Internal offline replay widget aligned with the evaluation/test protocol.
+
+This widget runs the model + alert engine in-process (no HTTP/API); the name
+"replay" refers to reproducing the deployed serving lifecycle batch by batch.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from analysis.evaluation import (
     df_to_timeseries,
     diagnose_replay_against_incidents,
     get_incident_spans,
-    simulate_api_replay_one_scenario,
+    simulate_offline_replay_one_scenario,
 )
 from sample_processing.model.current.anomaly_model import (
     AnomalyModel,
@@ -32,7 +36,7 @@ from ._replay_rendering import _compute_replay_plot_state, _plot_replay_column, 
 
 # Module-level cache for fitted models (keyed by scenario_id).
 # Avoids re-fitting AnomalyModel on every slider change when models=None.
-_api_replay_fit_cache: dict[object, AnomalyModel] = {}
+_offline_replay_fit_cache: dict[object, AnomalyModel] = {}
 
 
 def _effective_model_params(
@@ -142,8 +146,8 @@ def _build_replay_info_html(
     stride_hours: float,
     fit_df: pd.DataFrame,
     pred_df: pd.DataFrame,
-    api_pred_df: pd.DataFrame,
-    api_diag: dict,
+    replay_pred_df: pd.DataFrame,
+    replay_diag: dict,
     plot_state: dict[str, object] | None,
 ) -> str:
     return (
@@ -160,13 +164,13 @@ def _build_replay_info_html(
         f"group_confirm={alert_params.group_confirmation_count}/{alert_params.group_confirmation_window}, "
         f"group6_enabled={alert_params.enable_group6_alerts}<br>"
         f"<b>Replay sizes</b>: fit rows={len(fit_df)} pred rows={len(pred_df)} "
-        f"| windows={len(api_pred_df)} API alerts={int(api_pred_df['alert'].sum()) if not api_pred_df.empty else 0}<br>"
+        f"| windows={len(replay_pred_df)} API alerts={int(replay_pred_df['alert'].sum()) if not replay_pred_df.empty else 0}<br>"
         f"{_counts_line(plot_state)}<br>"
-        f"{_diagnosis_html_v2('API/Test replay', api_diag)}"
+        f"{_diagnosis_html_v2('Offline replay', replay_diag)}"
     )
 
 
-def create_api_replay_widget_ui(
+def create_offline_replay_widget_ui(
     *,
     full_df,
     scenario_col="scenario_id",
@@ -181,7 +185,7 @@ def create_api_replay_widget_ui(
     export_dir: str | Path = DEFAULT_WIDGET_EXPORT_DIR,
     models: dict | None = None,
 ):
-    """Single-view widget for the API/test replay protocol.
+    """Single-view widget for the offline replay protocol.
 
     Parameters
     ----------
@@ -301,7 +305,7 @@ def create_api_replay_widget_ui(
     out = widgets.Output(layout=widgets.Layout(width="100%", padding="6px"))
     replay_state: dict[str, object] = {
         "df": pd.DataFrame(),
-        "api_pred_df": pd.DataFrame(),
+        "replay_pred_df": pd.DataFrame(),
         "diagnostics": {},
         "incidents": [],
         "model_params": None,
@@ -359,8 +363,8 @@ def create_api_replay_widget_ui(
 
         if models is not None:
             _export_model = models.get(scenario_id)
-        elif scenario_id in _api_replay_fit_cache:
-            _export_model = _api_replay_fit_cache[scenario_id]
+        elif scenario_id in _offline_replay_fit_cache:
+            _export_model = _offline_replay_fit_cache[scenario_id]
         else:
             _export_model = AnomalyModel(is_cyclic=False)
             _export_model.params = model_params
@@ -368,9 +372,9 @@ def create_api_replay_widget_ui(
             if hasattr(_export_model._backend, "baseline_scaler"):
                 _export_model._backend.baseline_scaler = "standard"
             _export_model.fit(df_to_timeseries(fit_df, time_col=time_col))
-            _api_replay_fit_cache[scenario_id] = _export_model
+            _offline_replay_fit_cache[scenario_id] = _export_model
 
-        api_pred_df = simulate_api_replay_one_scenario(
+        replay_pred_df = simulate_offline_replay_one_scenario(
             fit_df=fit_df,
             pred_df=pred_df,
             model=_export_model,
@@ -380,7 +384,7 @@ def create_api_replay_widget_ui(
             alert_params=_alert_params,
             time_col=time_col,
         )
-        api_fit_df = simulate_api_replay_one_scenario(
+        replay_fit_df = simulate_offline_replay_one_scenario(
             fit_df=fit_df,
             pred_df=fit_df,
             model=_export_model,
@@ -390,9 +394,9 @@ def create_api_replay_widget_ui(
             alert_params=_alert_params,
             time_col=time_col,
         ) if show in ("fit", "both") else pd.DataFrame()
-        api_plot_df = _with_split_view(show, api_pred_df, api_fit_df)
-        api_diag = diagnose_replay_against_incidents(api_pred_df, incidents, tolerance_hours=2.0)
-        plot_state = _compute_replay_plot_state(api_plot_df, use_index=False, alert_params=_alert_params) if not api_plot_df.empty else None
+        replay_plot_df = _with_split_view(show, replay_pred_df, replay_fit_df)
+        replay_diag = diagnose_replay_against_incidents(replay_pred_df, incidents, tolerance_hours=2.0)
+        plot_state = _compute_replay_plot_state(replay_plot_df, use_index=False, alert_params=_alert_params) if not replay_plot_df.empty else None
         info_value = _build_replay_info_html(
             scenario_id=scenario_id,
             show=show,
@@ -402,8 +406,8 @@ def create_api_replay_widget_ui(
             stride_hours=stride_hours,
             fit_df=fit_df,
             pred_df=pred_df,
-            api_pred_df=api_pred_df,
-            api_diag=api_diag,
+            replay_pred_df=replay_pred_df,
+            replay_diag=replay_diag,
             plot_state=plot_state,
         )
         return {
@@ -413,41 +417,41 @@ def create_api_replay_widget_ui(
             "fit_df": fit_df,
             "pred_df": pred_df,
             "incidents": incidents,
-            "api_pred_df": api_pred_df,
-            "api_plot_df": api_plot_df,
-            "api_diag": api_diag,
+            "replay_pred_df": replay_pred_df,
+            "replay_plot_df": replay_plot_df,
+            "replay_diag": replay_diag,
             "info_html": info_value,
         }
 
-    def _build_api_figure(*, api_plot_df, incidents, use_index, show, model_params, alert_params, scenario_id):
+    def _build_replay_figure(*, replay_plot_df, incidents, use_index, show, model_params, alert_params, scenario_id):
         plt.ioff()
         fig, axes = plt.subplots(6, 1, figsize=(18, 28), sharex=True, gridspec_kw={"height_ratios": [2.6, 1.8, 1.4, 1.5, 1.8, 3.0]})
         _plot_replay_column(
             axes,
-            api_plot_df,
+            replay_plot_df,
             incidents=incidents,
             use_index=use_index,
             split_view_value=show,
             model_params=model_params,
             alert_params=alert_params,
-            title="API/Test replay",
+            title="Offline replay",
             anomaly_fill_color=anomaly_fill_color,
             time_col=time_col,
         )
-        fig.suptitle(f"Scenario {scenario_id} — API replay (fit-trained, {show} windows)", y=0.995)
+        fig.suptitle(f"Scenario {scenario_id} — Offline replay (fit-trained, {show} windows)", y=0.995)
         plt.tight_layout()
         return fig
 
     def _render_current_plot() -> None:
         sid = replay_state.get("scenario_id")
-        api_plot_df = replay_state.get("df", pd.DataFrame())
+        replay_plot_df = replay_state.get("df", pd.DataFrame())
         incidents = replay_state.get("incidents", [])
         model_params = replay_state.get("model_params")
         if sid is None or model_params is None:
             return
         with out:
             clear_output(wait=True)
-            if api_plot_df.empty:
+            if replay_plot_df.empty:
                 print("Replay returned no windows.")
                 return
             plt.ioff()
@@ -455,17 +459,17 @@ def create_api_replay_widget_ui(
             fig, axes = plt.subplots(6, 1, figsize=(18, 28), sharex=True, gridspec_kw={"height_ratios": [2.6, 1.8, 1.4, 1.5, 1.8, 3.0]})
             _plot_replay_column(
                 axes,
-                api_plot_df,
+                replay_plot_df,
                 incidents=incidents,
                 use_index=use_index,
                 split_view_value=split_view_btn.value,
                 model_params=model_params,
                 alert_params=_alert_params,
-                title="API/Test replay",
+                title="Offline replay",
                 anomaly_fill_color=anomaly_fill_color,
                 time_col=time_col,
             )
-            fig.suptitle(f"Scenario {sid} â€” API replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
+            fig.suptitle(f"Scenario {sid} â€” Offline replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
             plt.tight_layout()
             display(fig)
             plt.close(fig)
@@ -498,8 +502,8 @@ def create_api_replay_widget_ui(
 
             if models is not None:
                 _prefit_model = models.get(sid)
-            elif sid in _api_replay_fit_cache:
-                _prefit_model = _api_replay_fit_cache[sid]
+            elif sid in _offline_replay_fit_cache:
+                _prefit_model = _offline_replay_fit_cache[sid]
             else:
                 _prefit_model = AnomalyModel(is_cyclic=False)
                 _prefit_model.params = model_params
@@ -507,9 +511,9 @@ def create_api_replay_widget_ui(
                 if hasattr(_prefit_model._backend, "baseline_scaler"):
                     _prefit_model._backend.baseline_scaler = "standard"
                 _prefit_model.fit(df_to_timeseries(fit_df, time_col=time_col))
-                _api_replay_fit_cache[sid] = _prefit_model
+                _offline_replay_fit_cache[sid] = _prefit_model
 
-            api_pred_df = simulate_api_replay_one_scenario(
+            replay_pred_df = simulate_offline_replay_one_scenario(
                 fit_df=fit_df,
                 pred_df=pred_df,
                 model=_prefit_model,
@@ -519,7 +523,7 @@ def create_api_replay_widget_ui(
                 alert_params=_alert_params,
                 time_col=time_col,
             )
-            api_fit_df = simulate_api_replay_one_scenario(
+            replay_fit_df = simulate_offline_replay_one_scenario(
                 fit_df=fit_df,
                 pred_df=fit_df,
                 model=_prefit_model,
@@ -529,19 +533,19 @@ def create_api_replay_widget_ui(
                 alert_params=_alert_params,
                 time_col=time_col,
             ) if split_view_btn.value in ("fit", "both") else pd.DataFrame()
-            api_plot_df = _with_split_view(split_view_btn.value, api_pred_df, api_fit_df)
+            replay_plot_df = _with_split_view(split_view_btn.value, replay_pred_df, replay_fit_df)
 
-            api_diag = diagnose_replay_against_incidents(api_pred_df, incidents, tolerance_hours=2.0)
+            replay_diag = diagnose_replay_against_incidents(replay_pred_df, incidents, tolerance_hours=2.0)
 
-            replay_state["df"] = api_plot_df.copy()
-            replay_state["api_pred_df"] = api_pred_df.copy()
-            replay_state["diagnostics"] = {"api": api_diag}
+            replay_state["df"] = replay_plot_df.copy()
+            replay_state["replay_pred_df"] = replay_pred_df.copy()
+            replay_state["diagnostics"] = {"api": replay_diag}
             replay_state["incidents"] = incidents
             replay_state["model_params"] = model_params
             replay_state["scenario_id"] = sid
-            ui.replay_df = api_plot_df.copy()
+            ui.replay_df = replay_plot_df.copy()
 
-            plot_state = _compute_replay_plot_state(api_plot_df, use_index=False, alert_params=_alert_params) if not api_plot_df.empty else None
+            plot_state = _compute_replay_plot_state(replay_plot_df, use_index=False, alert_params=_alert_params) if not replay_plot_df.empty else None
             info_html.value = _build_replay_info_html(
                 scenario_id=sid,
                 show=split_view_btn.value,
@@ -551,12 +555,12 @@ def create_api_replay_widget_ui(
                 stride_hours=stride_hours,
                 fit_df=fit_df,
                 pred_df=pred_df,
-                api_pred_df=api_pred_df,
-                api_diag=api_diag,
+                replay_pred_df=replay_pred_df,
+                replay_diag=replay_diag,
                 plot_state=plot_state,
             )
 
-            if api_plot_df.empty:
+            if replay_plot_df.empty:
                 print("Replay returned no windows.")
                 return
 
@@ -564,15 +568,15 @@ def create_api_replay_widget_ui(
             use_index = (x_toggle.value == "Index")
             height_ratios = [2.6, 1.8, 1.4, 1.5, 1.8, 3.0]
             fig, axes = plt.subplots(6, 1, figsize=(18, 28), sharex=True, gridspec_kw={"height_ratios": height_ratios})
-            _plot_replay_column(axes, api_plot_df, incidents=incidents, use_index=use_index, split_view_value=split_view_btn.value, model_params=model_params, alert_params=_alert_params, title="API/Test replay", anomaly_fill_color=anomaly_fill_color, time_col=time_col)
-            fig.suptitle(f"Scenario {sid} — API replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
+            _plot_replay_column(axes, replay_plot_df, incidents=incidents, use_index=use_index, split_view_value=split_view_btn.value, model_params=model_params, alert_params=_alert_params, title="Offline replay", anomaly_fill_color=anomaly_fill_color, time_col=time_col)
+            fig.suptitle(f"Scenario {sid} — Offline replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
             plt.tight_layout()
             display(fig)
             plt.close(fig)
             plt.ion()
 
     def _export_all_defaults(_=None):
-        export_root = Path(export_dir) / "api_replay"
+        export_root = Path(export_dir) / "offline_replay"
         export_root.mkdir(parents=True, exist_ok=True)
         template = {
             "show": default_state.get("show", "pred"),
@@ -597,8 +601,8 @@ def create_api_replay_widget_ui(
                     window_top_k=int(group_params.window_top_k),
                     fusion_threshold=float(group_params.fusion_threshold),
                 )
-                fig = _build_api_figure(
-                    api_plot_df=replay["api_plot_df"],
+                fig = _build_replay_figure(
+                    replay_plot_df=replay["replay_plot_df"],
                     incidents=replay["incidents"],
                     use_index=template["x_axis"] == "Index",
                     show=template["show"],
@@ -653,10 +657,10 @@ def create_api_replay_widget_ui(
     return ui, ui.get_replay_df
 
 
-create_api_replay_widget_compare = create_api_replay_widget_ui
+create_offline_replay_widget_compare = create_offline_replay_widget_ui
 
 
-def create_api_replay_widget(
+def create_offline_replay_widget(
     full_df,
     scenario_col="scenario_id",
     split_col="split",
@@ -670,7 +674,7 @@ def create_api_replay_widget(
     export_dir=DEFAULT_WIDGET_EXPORT_DIR,
     models=None,
 ):
-    """Widget that mirrors the actual API lifecycle.
+    """Widget that mirrors the deployed serving lifecycle, offline and in-process.
 
     Parameters
     ----------
@@ -679,7 +683,7 @@ def create_api_replay_widget(
         When provided the widget skips the internal fit step. Pass ``None``
         (default) to keep fit-from-data behaviour.
     """
-    return create_api_replay_widget_ui(
+    return create_offline_replay_widget_ui(
         full_df=full_df,
         scenario_col=scenario_col,
         split_col=split_col,

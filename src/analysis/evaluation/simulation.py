@@ -1,16 +1,17 @@
-"""Single-scenario API replay — the per-batch model + alert-engine loop.
+"""Single-scenario offline replay — the per-batch model + alert-engine loop.
 
-``simulate_api_replay_one_scenario`` is the public entry point. It picks a
+``simulate_offline_replay_one_scenario`` is the public entry point. It picks a
 batching mode (``time`` or ``row``), drives ``_simulate_replay_batches`` over
 that iterator, and returns a debug DataFrame with one row per batch that
 captures the full prediction/alert diagnostics used by notebook 02 and the
 scoring widgets.
 
-Callers: ``plotting.scoring.api_replay_widget``, ``evaluation``, notebook 02.
+Callers: ``plotting.scoring.offline_replay_widget``, ``evaluation``, notebook 02.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,234 @@ def _infer_expected_samples_from_pipeline(
     return max(expected, 1)
 
 
+@dataclass
+class _BatchAlertResult:
+    """Per-batch alert-engine outputs (with engine-off defaults).
+
+    Decoupling the engine call from the row assembly keeps the per-batch loop
+    readable; ``alert_debug`` carries the engine's full debug payload through to
+    ``_build_replay_row``.
+    """
+
+    alert: bool = False
+    relalert_reason: str = ""
+    alert_debug: dict[str, Any] = field(default_factory=dict)
+    decision_timestamp: Any = None
+    anchored_timestamp: Any = None
+    owner_level: int = -1
+    owner_kind: str = ""
+    group_family: str = ""
+
+
+def _prepare_replay_model(
+    model: AnomalyModel | None,
+    *,
+    is_cyclic: bool,
+    baseline_scaler: str | None,
+    params_path: Path | None,
+    model_params_override: ModelParams | None,
+    fit_df: pd.DataFrame,
+    time_col: str,
+) -> AnomalyModel:
+    """Return the model to replay with.
+
+    When ``model`` is ``None`` a fresh ``AnomalyModel`` is constructed and fitted
+    on ``fit_df``; otherwise the pre-fitted ``model`` is reused and only
+    ``model_params_override`` (alarm-rule params) is applied. Behaviour is
+    identical to the original inline setup.
+    """
+    if model is None:
+        model = AnomalyModel(
+            params_path=params_path,
+            is_cyclic=is_cyclic,
+        )
+        if model_params_override is not None:
+            model.params = model_params_override
+            if hasattr(model._backend, "baseline_scaler"):
+                model._backend.baseline_scaler = model.params.baseline_scaler
+        if baseline_scaler is not None:
+            if baseline_scaler != "standard":
+                raise ValueError("baseline_scaler must be 'standard'")
+            model.params.baseline_scaler = baseline_scaler
+            if hasattr(model._backend, "baseline_scaler"):
+                model._backend.baseline_scaler = baseline_scaler
+        model.fit(df_to_timeseries(fit_df, time_col=time_col))
+    else:
+        if model_params_override is not None:
+            model.params = model_params_override
+    return model
+
+
+def _score_batch_alert(engine: AlertEngine | None, details: dict[str, Any]) -> _BatchAlertResult:
+    """Run the alert engine for one batch's ``details`` and extract its decision.
+
+    When ``engine`` is ``None`` (alerting disabled) the result carries engine-off
+    defaults anchored to the batch timestamp.
+    """
+    if engine is None:
+        return _BatchAlertResult(
+            decision_timestamp=details["timestamp"],
+            anchored_timestamp=details["timestamp"],
+        )
+
+    all_channel_details = {
+        **details["vel_channel_details"],
+        **details["accel_channel_details"],
+    }
+    prediction = PredictOutput(
+        anomaly_status=bool(details["anomaly_status"]),
+        timestamp=details["timestamp"],
+        occupancy_score=float(details["occupancy_score"]),
+        alert_score=float(details["alert_score"]),
+        mean_d_score=float(details["alert_score"]),
+        active_channels=list(details["active_channels"]),
+        active_modalities=list(details["active_modalities"]),
+        channel_max_residual={
+            col: float(info["max_residual"])
+            for col, info in all_channel_details.items()
+        },
+    )
+    decision = engine.predict(prediction)
+    alert_debug = dict(engine.last_debug)
+    return _BatchAlertResult(
+        alert=bool(decision.alert),
+        relalert_reason=engine.last_realert_reason or decision.message,
+        alert_debug=alert_debug,
+        decision_timestamp=getattr(decision, "decision_timestamp", None) or details["timestamp"],
+        anchored_timestamp=getattr(decision, "anchored_timestamp", None) or getattr(decision, "timestamp", details["timestamp"]),
+        owner_level=int(getattr(decision, "owner_level", alert_debug.get("owner_level", -1))),
+        owner_kind=str(getattr(decision, "owner_kind", alert_debug.get("owner_kind", ""))),
+        group_family=str(getattr(decision, "group_family", alert_debug.get("group_family", ""))),
+    )
+
+
+def _build_replay_row(
+    *,
+    details: dict[str, Any],
+    alert_result: _BatchAlertResult,
+    batch_index: int,
+    window_start,
+    window_end,
+    batch_df: pd.DataFrame,
+    scenario_id,
+    sensor_name,
+    is_cyclic: bool,
+    batching_mode: str,
+    alert_params_source: str,
+    configured_batch_size: int | None,
+) -> dict[str, Any]:
+    """Assemble one per-batch debug row from ``details`` + the alert result.
+
+    A one-to-one transcription of the original inline row dict; the only change
+    is that the alert-derived fields are read from ``alert_result``.
+    """
+    alert_debug = alert_result.alert_debug
+    channel_max_residual = {
+        **{
+            col: float(info["max_residual"])
+            for col, info in details["vel_channel_details"].items()
+        },
+        **{
+            col: float(info["max_residual"])
+            for col, info in details["accel_channel_details"].items()
+        },
+    }
+    window_mid = window_start + (window_end - window_start) / 2
+    plot_time = details["timestamp"] if batching_mode == "row" else window_mid
+
+    return {
+        "scenario_id": scenario_id,
+        "sensor_id": sensor_name,
+        "is_cyclic": bool(is_cyclic),
+        "batch_index": int(batch_index),
+        "batching_mode": str(batching_mode),
+        "alert_params_source": str(alert_params_source),
+        "configured_batch_size": (
+            int(configured_batch_size)
+            if configured_batch_size is not None
+            else pd.NA
+        ),
+        "window_start": window_start,
+        "window_end": window_end,
+        "window_mid": window_mid,
+        "plot_time": plot_time,
+        "window_hours": (window_end - window_start).total_seconds() / 3600.0,
+        "batch_rows": int(len(batch_df)),
+        "expected_samples_per_window": int(details["expected_samples_per_window"]),
+        "coverage": (
+            float(len(batch_df) / details["expected_samples_per_window"])
+            if int(details["expected_samples_per_window"]) > 0
+            else 0.0
+        ),
+        "vel_occupancy": float(details["vel_occupancy"]),
+        "accel_occupancy": float(details["accel_occupancy"]),
+        "vel_occupancy_fixed": float(details.get("vel_occupancy_fixed", details["vel_occupancy"])),
+        "accel_occupancy_fixed": float(details.get("accel_occupancy_fixed", details["accel_occupancy"])),
+        "occupancy_score": float(details["occupancy_score"]),
+        "occupancy_score_fixed": float(details.get("occupancy_score_fixed", details["occupancy_score"])),
+        "vel_occupancy_observed": float(details["vel_occupancy_observed"]),
+        "accel_occupancy_observed": float(details["accel_occupancy_observed"]),
+        "occupancy_score_observed": float(details["occupancy_score_observed"]),
+        "alert_score": float(details["alert_score"]),
+        "max_residual_active": float(details["max_residual_active"]),
+        "anomaly_status": bool(details["anomaly_status"]),
+        "alert": bool(alert_result.alert),
+        "active_modalities": list(details["active_modalities"]),
+        "active_channels": list(details["active_channels"]),
+        "relalert_reason": alert_result.relalert_reason,
+        "alert_event": str(alert_debug.get("event", "")),
+        "triggered_channels": list(alert_debug.get("triggered_channels", [])),
+        "opened_channels": list(alert_debug.get("opened_channels", [])),
+        "realerted_channels": list(alert_debug.get("realerted_channels", [])),
+        "reset_channels": list(alert_debug.get("reset_channels", [])),
+        "watched_channels": list(alert_debug.get("watched_channels", [])),
+        "group_mode_active": bool(alert_debug.get("group_mode_active", False)),
+        "group_mode_type": str(alert_debug.get("group_mode_type", "")),
+        "group_mode_kind": str(alert_debug.get("group_mode_kind", "")),
+        "group_metric_label": str(alert_debug.get("group_metric_label", "")),
+        "group_event": str(alert_debug.get("group_event", "")),
+        "group_opened": bool(alert_debug.get("group_opened", False)),
+        "group_realerted": bool(alert_debug.get("group_realerted", False)),
+        "group_reset": bool(alert_debug.get("group_reset", False)),
+        "group_channels": list(alert_debug.get("group_channels", [])),
+        "group_active_channels": list(alert_debug.get("group_active_channels", [])),
+        "group_reference_severity": float(alert_debug.get("group_reference_severity", 0.0)),
+        "group_current_severity": float(alert_debug.get("group_current_severity", 0.0)),
+        "group_cooldown_windows": int(alert_debug.get("group_cooldown_windows", 0)),
+        "group_reset_streak": int(alert_debug.get("group_reset_streak", 0)),
+        "suppressed_channel_alerts": list(alert_debug.get("suppressed_channel_alerts", [])),
+        "pending_channels": list(alert_debug.get("pending_channels", [])),
+        "pending_lower_priority_events": list(alert_debug.get("pending_lower_priority_events", [])),
+        "suppressed_by_priority": list(alert_debug.get("suppressed_by_priority", [])),
+        "suppression_target": list(alert_debug.get("suppression_target", [])),
+        "promotion_candidate_kind": str(alert_debug.get("promotion_candidate_kind", "")),
+        "promotion_holdback_remaining": int(alert_debug.get("promotion_holdback_remaining", 0)),
+        "promotion_resolution_state": str(alert_debug.get("promotion_resolution_state", "")),
+        "pending_event_release_reason": str(alert_debug.get("pending_event_release_reason", "")),
+        "suppression_window_expires_at": int(alert_debug.get("suppression_window_expires_at", -1)),
+        "emitted_event_scope": str(alert_debug.get("emitted_event_scope", "")),
+        "individual_alert_mode": str(alert_debug.get("individual_alert_mode", "")),
+        "decision_timestamp": alert_result.decision_timestamp,
+        "anchored_timestamp": alert_result.anchored_timestamp,
+        "owner_level": alert_result.owner_level,
+        "owner_kind": alert_result.owner_kind,
+        "group_family": alert_result.group_family or str(alert_debug.get("group_family", "")),
+        "triggered_reasons_by_channel": dict(alert_debug.get("triggered_reasons_by_channel", {})),
+        "current_channels": list(alert_debug.get("current_channels", [])),
+        "reference_max_by_channel": dict(alert_debug.get("reference_max_by_channel", {})),
+        "current_channel_max_residual": dict(alert_debug.get("current_channel_max_residual", {})),
+        "current_max_by_channel": dict(alert_debug.get("current_max_by_channel", {})),
+        "reset_streak_by_channel": dict(alert_debug.get("reset_streak_by_channel", {})),
+        "cooldown_by_channel": dict(alert_debug.get("cooldown_by_channel", {})),
+        "channel_max_residual": channel_max_residual,
+        "batch_rows_vel": int(details["batch_rows_vel"]),
+        "batch_rows_accel": int(details["batch_rows_accel"]),
+        "timestamp": alert_result.anchored_timestamp,
+        "vel_channel_details": details["vel_channel_details"],
+        "accel_channel_details": details["accel_channel_details"],
+    }
+
+
 def _simulate_replay_batches(
     fit_df: pd.DataFrame,
     pred_df: pd.DataFrame,
@@ -79,27 +308,17 @@ def _simulate_replay_batches(
     alert_params_source: str,
     configured_batch_size: int | None = None,
 ) -> pd.DataFrame:
-    """Shared replay implementation used by both API and report-style modes."""
+    """Shared replay implementation used by both the offline-widget and report-style modes."""
     pipeline = load_pipeline_params()
-    if model is None:
-        model = AnomalyModel(
-            params_path=params_path,
-            is_cyclic=is_cyclic,
-        )
-        if model_params_override is not None:
-            model.params = model_params_override
-            if hasattr(model._backend, "baseline_scaler"):
-                model._backend.baseline_scaler = model.params.baseline_scaler
-        if baseline_scaler is not None:
-            if baseline_scaler != "standard":
-                raise ValueError("baseline_scaler must be 'standard'")
-            model.params.baseline_scaler = baseline_scaler
-            if hasattr(model._backend, "baseline_scaler"):
-                model._backend.baseline_scaler = baseline_scaler
-        model.fit(df_to_timeseries(fit_df, time_col=time_col))
-    else:
-        if model_params_override is not None:
-            model.params = model_params_override
+    model = _prepare_replay_model(
+        model,
+        is_cyclic=is_cyclic,
+        baseline_scaler=baseline_scaler,
+        params_path=params_path,
+        model_params_override=model_params_override,
+        fit_df=fit_df,
+        time_col=time_col,
+    )
     engine = AlertEngine(alert_params) if include_alert_engine else None
 
     scenario_id = (
@@ -123,148 +342,22 @@ def _simulate_replay_batches(
             batch_ts,
             expected_samples_per_window=expected_samples,
         )
-
-        alert = False
-        relalert_reason = ""
-        alert_debug: dict[str, Any] = {}
-        decision_timestamp = details["timestamp"]
-        anchored_timestamp = details["timestamp"]
-        owner_level = -1
-        owner_kind = ""
-        group_family = ""
-        if engine is not None:
-            all_channel_details = {
-                **details["vel_channel_details"],
-                **details["accel_channel_details"],
-            }
-            prediction = PredictOutput(
-                anomaly_status=bool(details["anomaly_status"]),
-                timestamp=details["timestamp"],
-                occupancy_score=float(details["occupancy_score"]),
-                alert_score=float(details["alert_score"]),
-                mean_d_score=float(details["alert_score"]),
-                active_channels=list(details["active_channels"]),
-                active_modalities=list(details["active_modalities"]),
-                channel_max_residual={
-                    col: float(info["max_residual"])
-                    for col, info in all_channel_details.items()
-                },
-            )
-            decision = engine.predict(prediction)
-            alert = bool(decision.alert)
-            relalert_reason = engine.last_realert_reason or decision.message
-            alert_debug = dict(engine.last_debug)
-            decision_timestamp = getattr(decision, "decision_timestamp", None) or details["timestamp"]
-            anchored_timestamp = getattr(decision, "anchored_timestamp", None) or getattr(decision, "timestamp", details["timestamp"])
-            owner_level = int(getattr(decision, "owner_level", alert_debug.get("owner_level", -1)))
-            owner_kind = str(getattr(decision, "owner_kind", alert_debug.get("owner_kind", "")))
-            group_family = str(getattr(decision, "group_family", alert_debug.get("group_family", "")))
-
-        channel_max_residual = {
-            **{
-                col: float(info["max_residual"])
-                for col, info in details["vel_channel_details"].items()
-            },
-            **{
-                col: float(info["max_residual"])
-                for col, info in details["accel_channel_details"].items()
-            },
-        }
-        window_mid = window_start + (window_end - window_start) / 2
-        plot_time = details["timestamp"] if batching_mode == "row" else window_mid
-
+        alert_result = _score_batch_alert(engine, details)
         rows.append(
-            {
-                "scenario_id": scenario_id,
-                "sensor_id": sensor_name,
-                "is_cyclic": bool(is_cyclic),
-                "batch_index": int(batch_index),
-                "batching_mode": str(batching_mode),
-                "alert_params_source": str(alert_params_source),
-                "configured_batch_size": (
-                    int(configured_batch_size)
-                    if configured_batch_size is not None
-                    else pd.NA
-                ),
-                "window_start": window_start,
-                "window_end": window_end,
-                "window_mid": window_mid,
-                "plot_time": plot_time,
-                "window_hours": (window_end - window_start).total_seconds() / 3600.0,
-                "batch_rows": int(len(batch_df)),
-                "expected_samples_per_window": int(details["expected_samples_per_window"]),
-                "coverage": (
-                    float(len(batch_df) / details["expected_samples_per_window"])
-                    if int(details["expected_samples_per_window"]) > 0
-                    else 0.0
-                ),
-                "vel_occupancy": float(details["vel_occupancy"]),
-                "accel_occupancy": float(details["accel_occupancy"]),
-                "vel_occupancy_fixed": float(details.get("vel_occupancy_fixed", details["vel_occupancy"])),
-                "accel_occupancy_fixed": float(details.get("accel_occupancy_fixed", details["accel_occupancy"])),
-                "occupancy_score": float(details["occupancy_score"]),
-                "occupancy_score_fixed": float(details.get("occupancy_score_fixed", details["occupancy_score"])),
-                "vel_occupancy_observed": float(details["vel_occupancy_observed"]),
-                "accel_occupancy_observed": float(details["accel_occupancy_observed"]),
-                "occupancy_score_observed": float(details["occupancy_score_observed"]),
-                "alert_score": float(details["alert_score"]),
-                "max_residual_active": float(details["max_residual_active"]),
-                "anomaly_status": bool(details["anomaly_status"]),
-                "alert": bool(alert),
-                "active_modalities": list(details["active_modalities"]),
-                "active_channels": list(details["active_channels"]),
-                "relalert_reason": relalert_reason,
-                "alert_event": str(alert_debug.get("event", "")),
-                "triggered_channels": list(alert_debug.get("triggered_channels", [])),
-                "opened_channels": list(alert_debug.get("opened_channels", [])),
-                "realerted_channels": list(alert_debug.get("realerted_channels", [])),
-                "reset_channels": list(alert_debug.get("reset_channels", [])),
-                "watched_channels": list(alert_debug.get("watched_channels", [])),
-                "group_mode_active": bool(alert_debug.get("group_mode_active", False)),
-                "group_mode_type": str(alert_debug.get("group_mode_type", "")),
-                "group_mode_kind": str(alert_debug.get("group_mode_kind", "")),
-                "group_metric_label": str(alert_debug.get("group_metric_label", "")),
-                "group_event": str(alert_debug.get("group_event", "")),
-                "group_opened": bool(alert_debug.get("group_opened", False)),
-                "group_realerted": bool(alert_debug.get("group_realerted", False)),
-                "group_reset": bool(alert_debug.get("group_reset", False)),
-                "group_channels": list(alert_debug.get("group_channels", [])),
-                "group_active_channels": list(alert_debug.get("group_active_channels", [])),
-                "group_reference_severity": float(alert_debug.get("group_reference_severity", 0.0)),
-                "group_current_severity": float(alert_debug.get("group_current_severity", 0.0)),
-                "group_cooldown_windows": int(alert_debug.get("group_cooldown_windows", 0)),
-                "group_reset_streak": int(alert_debug.get("group_reset_streak", 0)),
-                "suppressed_channel_alerts": list(alert_debug.get("suppressed_channel_alerts", [])),
-                "pending_channels": list(alert_debug.get("pending_channels", [])),
-                "pending_lower_priority_events": list(alert_debug.get("pending_lower_priority_events", [])),
-                "suppressed_by_priority": list(alert_debug.get("suppressed_by_priority", [])),
-                "suppression_target": list(alert_debug.get("suppression_target", [])),
-                "promotion_candidate_kind": str(alert_debug.get("promotion_candidate_kind", "")),
-                "promotion_holdback_remaining": int(alert_debug.get("promotion_holdback_remaining", 0)),
-                "promotion_resolution_state": str(alert_debug.get("promotion_resolution_state", "")),
-                "pending_event_release_reason": str(alert_debug.get("pending_event_release_reason", "")),
-                "suppression_window_expires_at": int(alert_debug.get("suppression_window_expires_at", -1)),
-                "emitted_event_scope": str(alert_debug.get("emitted_event_scope", "")),
-                "individual_alert_mode": str(alert_debug.get("individual_alert_mode", "")),
-                "decision_timestamp": decision_timestamp,
-                "anchored_timestamp": anchored_timestamp,
-                "owner_level": owner_level,
-                "owner_kind": owner_kind,
-                "group_family": group_family or str(alert_debug.get("group_family", "")),
-                "triggered_reasons_by_channel": dict(alert_debug.get("triggered_reasons_by_channel", {})),
-                "current_channels": list(alert_debug.get("current_channels", [])),
-                "reference_max_by_channel": dict(alert_debug.get("reference_max_by_channel", {})),
-                "current_channel_max_residual": dict(alert_debug.get("current_channel_max_residual", {})),
-                "current_max_by_channel": dict(alert_debug.get("current_max_by_channel", {})),
-                "reset_streak_by_channel": dict(alert_debug.get("reset_streak_by_channel", {})),
-                "cooldown_by_channel": dict(alert_debug.get("cooldown_by_channel", {})),
-                "channel_max_residual": channel_max_residual,
-                "batch_rows_vel": int(details["batch_rows_vel"]),
-                "batch_rows_accel": int(details["batch_rows_accel"]),
-                "timestamp": anchored_timestamp,
-                "vel_channel_details": details["vel_channel_details"],
-                "accel_channel_details": details["accel_channel_details"],
-            }
+            _build_replay_row(
+                details=details,
+                alert_result=alert_result,
+                batch_index=batch_index,
+                window_start=window_start,
+                window_end=window_end,
+                batch_df=batch_df,
+                scenario_id=scenario_id,
+                sensor_name=sensor_name,
+                is_cyclic=is_cyclic,
+                batching_mode=batching_mode,
+                alert_params_source=alert_params_source,
+                configured_batch_size=configured_batch_size,
+            )
         )
 
     replay_df = pd.DataFrame(rows)
@@ -284,7 +377,7 @@ def _simulate_replay_batches(
     return replay_df
 
 
-def simulate_api_replay_one_scenario(
+def simulate_offline_replay_one_scenario(
     fit_df: pd.DataFrame,
     pred_df: pd.DataFrame,
     *,

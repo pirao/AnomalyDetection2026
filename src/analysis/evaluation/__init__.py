@@ -7,14 +7,14 @@ Module layout
 -------------
 - ``batching``     — payload conversion + time/row batch iterators
 - ``incidents``    — incident span extraction, labels I/O, alert-window matching
-- ``simulation``   — single-scenario API replay (the per-batch model loop)
+- ``simulation``   — single-scenario offline replay (the per-batch model loop)
 - ``evaluation``   — multi-scenario inference-test orchestration + metric reports
 
 Notebook display helpers (``md_table``, ``plot_confusion``) live in
 ``analysis.plotting`` — they depend on seaborn/IPython and must NOT be pulled
 into this ``.venv``-safe import path.
 
-Consumers: ``plotting.scoring.api_replay_widget``, ``plotting.scoring.widgets``,
+Consumers: ``plotting.scoring.offline_replay_widget``, ``plotting.scoring.widgets``,
 ``analysis.mlflow.model_cache``, and notebook 02.
 
 ``run_inference_test_evaluation`` is the canonical scenario-level evaluation
@@ -41,7 +41,7 @@ from .incidents import (
     get_incident_spans,
     load_incidents_by_scenario,
 )
-from .simulation import DEFAULT_DATA_DIR, simulate_api_replay_one_scenario
+from .simulation import DEFAULT_DATA_DIR, simulate_offline_replay_one_scenario
 
 __all__ = [
     "DEFAULT_DATA_DIR",
@@ -62,6 +62,6 @@ __all__ = [
     "iter_time_batches",
     "load_incidents_by_scenario",
     "run_inference_test_evaluation",
-    "simulate_api_replay_one_scenario",
+    "simulate_offline_replay_one_scenario",
     "summarize_inference_test_metrics",
 ]

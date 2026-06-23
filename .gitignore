@@ -23,3 +23,5 @@ mlartifacts/
 # Local/private assistant configuration
 .claude/
 .superpowers/
+docs/mle-deployment-study-log.md
+docs/mle-deployment-study-plan.md

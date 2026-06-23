@@ -1,6 +1,6 @@
-"""Figure rendering helpers for the API replay widget.
+"""Figure rendering helpers for the offline replay widget.
 
-Extracts the two compute-heavy functions from ``api_replay_widget`` so that
+Extracts the two compute-heavy functions from ``offline_replay_widget`` so that
 the widget module stays focused on state management and UI wiring:
 
 - ``_compute_replay_plot_state`` — translates a replay DataFrame into
@@ -10,7 +10,7 @@ the widget module stays focused on state management and UI wiring:
   (scores, raw engine candidates, emitted API alerts, cause breakdown,
   active channels, per-channel residuals + group severity).
 
-These functions are called exclusively from ``create_api_replay_widget_ui``.
+These functions are called exclusively from ``create_offline_replay_widget_ui``.
 """
 
 from __future__ import annotations

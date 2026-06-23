@@ -4,16 +4,66 @@ A FastAPI service that detects faults in industrial vibration sensors. For each 
 
 > This public repo ships without the private datasets, labels, or fitted artifacts. Reference figures are included as visual summaries only.
 
+## Repository Structure
+
+```text
+AnomalyDetection2026/
+├── src/
+│   ├── sample_processing/              # deployable service (lean runtime image)
+│   │   ├── api/
+│   │   │   └── main.py                 # FastAPI: /fit, /predict, /health; loads @production at startup
+│   │   └── model/
+│   │       ├── baseline/               # single-feature z-score detector + simple alert engine
+│   │       │   ├── anomaly_model.py
+│   │       │   ├── alert_engine.py
+│   │       │   └── hyperparameters/model_hyperparams.yaml
+│   │       ├── current/                # residual-space detector + tiered alert engine
+│   │       │   ├── anomaly_model.py
+│   │       │   ├── sensor_model.py
+│   │       │   ├── normalization.py
+│   │       │   ├── preprocessing.py
+│   │       │   ├── alerting/           # engine, group_logic, priority_queue
+│   │       │   └── hyperparameters/    # norm_model_hyperparams.yaml, alert_hyperparams.yaml
+│   │       ├── shared/
+│   │       │   └── pipeline_hyperparams.yaml
+│   │       └── scenario_groups.py      # sensor → scenario-group routing
+│   ├── analysis/                       # offline only — not imported by the runtime service
+│   │   ├── evaluation/                 # API-replay benchmark: batching, incidents, simulation, metrics
+│   │   ├── mlflow/                     # tracking, registry, model cache, deployment demo
+│   │   │   ├── mlflow_experiments.py   # run logging + baseline-vs-current comparison
+│   │   │   ├── mlflow_registry.py      # register, promote alias, load_for_serving
+│   │   │   ├── model_cache.py          # fingerprinted artifact cache
+│   │   │   └── deploy_demo.py          # generates notebooks/_images/mlflow/deploy_demo.gif
+│   │   └── plotting/                   # notebook visualisation widgets
+│   │       ├── scoring/                # sigmoid scoring + API replay widgets
+│   │       ├── eda/                    # RMS and scenario inspector widgets
+│   │       ├── reporting.py            # md_table, plot_confusion (seaborn; notebook-only)
+│   │       └── style.py                # set_plot_style() — shared serif rcParams
+│   └── tests/                          # contract, model, evaluation, performance tests
+├── notebooks/
+│   ├── 01_eda.ipynb                    # exploratory data analysis
+│   ├── 02_model_debugging.ipynb        # model development, scoring, evaluation
+│   └── _images/                        # exported figures
+│       ├── mlflow/                     # deploy_demo.gif, experiments.png, registry.png
+│       └── widget_exports/             # sigmoid scoring + API replay exports (all 29 scenarios)
+├── data/                               # private sensor parquet files (see data/README.md)
+├── labels/                             # private incident labels (see labels/README.md)
+├── cache/                              # fitted model artifacts, .pkl ignored (see cache/README.md)
+├── Dockerfile
+├── compose.yaml
+├── Makefile
+└── pyproject.toml
+```
+
 ## Problem And Evaluation
 
 Each scenario has a private `fit` split (used only to estimate normal behavior) and a `pred` split that is replayed as the evaluation stream. Labels are private fault windows. The API receives `pred` in overlapping batches and returns alarms; the evaluator scores them **by event window**:
 
 - **True positive** — an alarm overlaps a labelled fault window.
 - **False negative** — no alarm overlaps the window.
-- **Partial** — an alarm fires but does not cover enough of the window.
 - **False positive** — an alarm fires in a no-event scenario.
 
-Precision, recall, and F1 summarize these. The model must clear the benchmark's (private) precision, recall, and F1 gates. No-event scenarios matter as much as faults: frequent false alarms make an alerting system untrustworthy.
+Precision, recall, and F1 summarize these. No-event scenarios matter as much as faults: frequent false alarms make an alerting system untrustworthy.
 
 ## Results: Baseline vs Current
 
@@ -46,7 +96,7 @@ The detector is intentionally small and inspectable:
 
 The model produces many anomaly markers, but the API does not alert on every one — the alert layer decides when movement is strong and coordinated enough to report.
 
-![Scenario 2 API replay](notebooks/_images/widget_exports/api_replay/scenario_2.png)
+![Scenario 2 offline replay](notebooks/_images/widget_exports/offline_replay/scenario_2.png)
 
 ![Alert hierarchy](notebooks/assets/alert_hierarchy/alert-hierarchy-demo.svg)
 
@@ -56,7 +106,7 @@ More exported scenarios are in [notebooks/_images/widget_exports](notebooks/_ima
 
 The model lifecycle runs end to end on MLflow (tracking + registry, SQLite-backed at `mlflow.db`).
 
-- **Track.** Baseline and current are evaluated through the exact FastAPI path and logged as comparable runs in the `baseline-vs-current` experiment (metrics, params, dataset) — so shipping the current model is evidence-backed (see Results).
+- **Track.** Baseline and current are evaluated through the exact FastAPI path and logged as comparable runs in the `baseline-vs-current` experiment (metrics, params, dataset) — so shipping the current model is evidence-backed (see Results above).
 - **Register.** The 29 per-sensor fitted models are packaged into **one** pyfunc bundle registered as `anomaly-detector-current` — one model, not 29, because the sensors are calibrations of the same detector routed by `sensor_id`. Each version carries the data/config/git **fingerprint** tying it to the exact run that validated it.
 - **Promote.** Deployment is an **alias** move (`@production`) — promotion or rollback is one line, no code change.
 - **Serve.** The FastAPI service loads the `@production` bundle once at startup (pre-fitted — **no runtime training**); if the registry is unavailable it degrades to runtime-fit (`/fit` + `/predict`).
@@ -67,30 +117,6 @@ The model lifecycle runs end to end on MLflow (tracking + registry, SQLite-backe
 Below, the deployed service replays `sensor_9` through `/predict`; the `@production` model raises a single alert that lands inside the labelled incident window — produced entirely from the registry, with no runtime fit.
 
 ![Deployed model serving a live sensor stream](notebooks/_images/mlflow/deploy_demo.gif)
-
-## Repository Structure
-
-```text
-src/
-  sample_processing/            # deployable service (lean runtime image)
-    api/main.py                 # FastAPI: /fit, /predict, /health; loads @production at startup
-    model/
-      baseline/                 # baseline detector + simple alert engine
-      current/                  # current detector
-        alerting/               #   tiered alert engine
-        hyperparameters/        #   norm_model + alert YAML
-        anomaly_model.py, sensor_model.py, normalization.py, preprocessing.py
-      shared/                   # pipeline_hyperparams.yaml
-      scenario_groups.py        # sensor -> scenario-group routing
-  analysis/                     # offline only (notebook stack; not used by the runtime service)
-    evaluation/                 # API-replay benchmark evaluation
-    mlflow/                     # tracking, registry, model cache, deploy_demo
-    plotting/                   # notebook viz widgets + shared style
-  tests/
-notebooks/                      # 01_eda, 02_model_debugging + exported figures (_images/)
-data/  labels/  cache/          # private placeholders (see their READMEs)
-Dockerfile  compose.yaml  Makefile  pyproject.toml
-```
 
 ## How To Run
 

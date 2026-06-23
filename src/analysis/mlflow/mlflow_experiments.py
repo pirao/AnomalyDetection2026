@@ -107,7 +107,7 @@ def _evaluate_current_scenarios_from_cache(
     artifact is identical to what register_bundle packages, making the fingerprint
     join in fetch_evaluation_metrics strictly valid.
     """
-    from analysis.evaluation.simulation import simulate_api_replay_one_scenario
+    from analysis.evaluation.simulation import simulate_offline_replay_one_scenario
 
     alerts_by_scenario: dict[int, list[str]] = {}
     for sid in ordered_ids:
@@ -121,7 +121,7 @@ def _evaluate_current_scenarios_from_cache(
             alerts_by_scenario[sid] = []
             continue
 
-        replay_df = simulate_api_replay_one_scenario(
+        replay_df = simulate_offline_replay_one_scenario(
             fit_df=pd.DataFrame(),
             pred_df=pred_df,
             model=model,
