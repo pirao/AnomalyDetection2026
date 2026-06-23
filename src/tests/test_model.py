@@ -259,8 +259,14 @@ class TestModelEngineIntegration:
         d_normal = engine.predict(pred_normal)
         assert d_normal.alert is False
 
-        pred_anomaly = model.predict(_make_ts(50, vel_base=50.0, vel_std=0.5, seed=99))
-        d_anomaly = engine.predict(pred_anomaly)
+        # Model-generated predictions carry active channel details, so the
+        # priority alert engine confirms persistence before emitting.
+        first_pred_anomaly = model.predict(_make_ts(50, vel_base=50.0, vel_std=0.5, seed=99))
+        first_decision = engine.predict(first_pred_anomaly)
+        assert first_decision.alert is False
+
+        second_pred_anomaly = model.predict(_make_ts(50, vel_base=50.0, vel_std=0.5, seed=100))
+        d_anomaly = engine.predict(second_pred_anomaly)
         assert d_anomaly.alert is True
 
     def test_multiple_sensors_have_independent_engines(self):
@@ -271,10 +277,23 @@ class TestModelEngineIntegration:
         for m in models.values():
             m.fit(fit_ts)
 
-        # Fire alert on sensor "a"
-        engines["a"].predict(models["a"].predict(_make_ts(50, vel_base=50.0, seed=99)))
+        # Fire alert on sensor "a" after its own confirmation gate.
+        for seed in (99, 100, 101):
+            engines["a"].predict(
+                models["a"].predict(_make_ts(50, vel_base=50.0, seed=seed))
+            )
 
-        # Sensor "b" must still fire on its own anomaly
-        pred_b = models["b"].predict(_make_ts(50, vel_base=50.0, seed=99))
-        d_b = engines["b"].predict(pred_b)
+        # Sensor "b" must still progress through its own confirmation state.
+        first_b = engines["b"].predict(
+            models["b"].predict(_make_ts(50, vel_base=50.0, seed=99))
+        )
+        second_b = engines["b"].predict(
+            models["b"].predict(_make_ts(50, vel_base=50.0, seed=100))
+        )
+        assert first_b.alert is False
+        assert second_b.alert is False
+
+        d_b = engines["b"].predict(
+            models["b"].predict(_make_ts(50, vel_base=50.0, seed=101))
+        )
         assert d_b.alert is True

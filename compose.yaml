@@ -1,40 +1,61 @@
 services:
+  # make run - Local runtime API.
+  # Builds the Dockerfile `api` target, which contains runtime dependencies and
+  # src/sample_processing only. Private data, labels, notebooks, tests, analysis
+  # files, and cached models are not copied into this image.
   api:
-    build: .
+    build:
+      context: .
+      target: api
     ports:
       - "8000:8000"
 
-  # make test - Dockerized full pytest helper
+  # make test - Dockerized pytest helper.
+  # Builds the Dockerfile `test` target and mounts private benchmark inputs
+  # read-only at runtime instead of baking them into an image layer.
   test:
-    build: .
-    command: uv run pytest src/tests -v
+    build:
+      context: .
+      target: test
+    command: uv run --no-sync pytest src/tests -v
+    volumes:
+      - ./data:/app/data:ro
+      - ./labels:/app/labels:ro
     profiles:
       - test
 
-  # make inference-test - main private benchmark gate and source of reported metrics
+  # make inference-test - private benchmark gate and source of reported metrics.
+  # Uses the same `test` target as `make test`, but runs only the benchmark file.
+  # It can take around 15 minutes, so it is kept behind an explicit profile.
   inference-test:
-    build: .
-    command: uv run pytest src/tests/test_evaluation.py -v --tb=short
+    build:
+      context: .
+      target: test
+    command: uv run --no-sync pytest src/tests/test_evaluation.py -v --tb=short
+    volumes:
+      - ./data:/app/data:ro
+      - ./labels:/app/labels:ro
     profiles:
       - inference-test
 
-  # make notebooks - JupyterLab with the analysis/notebook dependency stack.
-  # Only venv-free directories are mounted so the container's Linux .venv is not
-  # shadowed by the host (Windows) one.
+  # make notebooks - JupyterLab analysis environment.
+  # Builds the Dockerfile `notebooks` target. Notebook files, generated figures,
+  # private inputs, and local cache artifacts stay on the host and are mounted at
+  # runtime. data/ and labels/ are read-only; cache/ is writable for regenerated
+  # fitted-model artifacts.
   notebooks:
     build:
       context: .
-      args:
-        INSTALL_NOTEBOOKS: "true"
+      target: notebooks
     command: >
-      uv run jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
+      uv run --no-sync jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
       --allow-root --ServerApp.token='' --ServerApp.root_dir=/app
     ports:
       - "8888:8888"
     volumes:
       - ./notebooks:/app/notebooks
-      - ./data:/app/data
-      - ./labels:/app/labels
+      - ./data:/app/data:ro
+      - ./labels:/app/labels:ro
       - ./cache:/app/cache
     profiles:
       - notebooks

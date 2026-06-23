@@ -121,15 +121,37 @@ Below, the deployed service replays `sensor_9` through `/predict`; the `@product
 ## How To Run
 
 ```bash
-make run             # build + start the API on localhost:8000
-make inference-test  # private benchmark gate and source of the reported metrics
-make stop            # stop the Docker services
+make help            # show the Docker shortcuts and their roles
+make run             # build + start only the API on localhost:8000
+make test            # run the Dockerized pytest suite
+make inference-test  # run the private benchmark gate; can take about 15 minutes
+make notebooks       # start JupyterLab on localhost:8888
+make stop            # stop Docker Compose services
 
-mlflow ui --backend-store-uri sqlite:///mlflow.db        # browse experiments + registry
-python -m analysis.mlflow.deploy_demo --sensor 9         # regenerate the deployment GIF
+mlflow ui --backend-store-uri sqlite:///mlflow.db        # browse local experiments + registry
+uv run --extra notebooks python -m analysis.mlflow.deploy_demo --sensor 9
 ```
 
-Restore the private files in [data/README.md](data/README.md) and [labels/README.md](labels/README.md) before running the benchmark. Notebook `02_model_debugging.ipynb` uses the same criteria.
+Restore the private files in [data/README.md](data/README.md) and [labels/README.md](labels/README.md) before running `make test`, `make inference-test`, or the notebooks. Notebook `02_model_debugging.ipynb` uses the same evaluation criteria as `src/tests/test_evaluation.py`.
+
+## Docker Image Layout
+
+The Docker setup follows the same separation as the project structure:
+
+| Service | Dockerfile target | What is copied into the image | What is mounted at runtime |
+|---|---|---|---|
+| `api` | `api` | `src/sample_processing` only | Nothing private; callers send data over HTTP |
+| `test` | `test` | `src/sample_processing`, `src/tests` | `./data:/app/data:ro`, `./labels:/app/labels:ro` |
+| `inference-test` | `test` | Same image as `test` | Same read-only benchmark mounts |
+| `notebooks` | `notebooks` | `src/sample_processing`, `src/analysis` | `./notebooks`, `./data:ro`, `./labels:ro`, `./cache` |
+
+Important Docker rules for this project:
+
+- `COPY . .` copies the whole Docker build context, not just `src/`. That is why notebooks, exported images, tests, and other repo files previously appeared in the API image.
+- `data/`, `labels/`, `cache/`, and `notebooks/` are excluded from the Docker build context and supplied with Compose bind mounts when a service needs them.
+- `:ro` means read-only. The test and notebook containers can read private benchmark inputs, but they cannot modify those host folders.
+- `/app/.venv` is created inside the Linux image by `uv sync`; the host `.venv` is ignored so a Windows virtual environment is never copied into the container.
+- `uv run --no-sync` is used in container commands because the image build already created the environment. Runtime commands should use that frozen environment instead of changing it at startup.
 
 ## Reproducibility And License
 
