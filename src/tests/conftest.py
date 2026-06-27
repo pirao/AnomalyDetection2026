@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Generator
@@ -28,6 +29,19 @@ LABELS_PATH = (
     else _LEGACY_LABELS_PATH
 )
 
+# -- Data availability ---------------------------------------------------------
+#
+# A CI runner checks out only what is committed; the private benchmark data is
+# git-ignored and therefore absent. Tests that need it are skipped via the
+# per-module ``pytestmark`` in the data-dependent test files. Set
+# ANOMALY_FORCE_NO_DATA=1 to exercise the data-absent path locally.
+_FORCE_NO_DATA = os.getenv("ANOMALY_FORCE_NO_DATA") == "1"
+DATA_AVAILABLE = (
+    not _FORCE_NO_DATA
+    and any(DATA_DIR.glob("sensor_data_fit_*.parquet"))
+    and LABELS_PATH.exists()
+)
+
 # -- Pipeline windowing parameters (from pipeline_hyperparams.yaml) ------------
 
 _PIPELINE = load_pipeline_params()
@@ -44,6 +58,8 @@ ALL_SCENARIO_IDS = list(range(1, 30))
 
 
 def _load_incidents_raw() -> dict[int, list[dict]]:
+    if not DATA_AVAILABLE:
+        return {}
     with open(LABELS_PATH) as f:
         raw = yaml.safe_load(f)
     return {int(k): (v or []) for k, v in raw.items()}
@@ -93,6 +109,8 @@ def _load_ref_data() -> tuple[list[dict], list[dict], list[dict]]:
     Batches are sized according to pipeline_hyperparams.yaml (WINDOW_HOURS).
     Called after df_to_data_points is defined below.
     """
+    if not DATA_AVAILABLE:
+        return [], [], []
     fit_df = pd.read_parquet(DATA_DIR / f"sensor_data_fit_{_REF_SCENARIO}.parquet")
     pred_df = pd.read_parquet(DATA_DIR / f"sensor_data_pred_{_REF_SCENARIO}.parquet")
 
@@ -147,6 +165,8 @@ def client() -> Generator[TestClient, None, None]:
 @pytest.fixture(scope="session")
 def incidents() -> dict[int, list[dict]]:
     """Load incidents.yaml once per session."""
+    if not DATA_AVAILABLE:
+        return {}
     with open(LABELS_PATH) as f:
         raw = yaml.safe_load(f)
     return {int(k): (v or []) for k, v in raw.items()}

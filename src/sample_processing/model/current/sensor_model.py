@@ -18,10 +18,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .interface import TimeSeries
 from .normalization import apply_norm_scores, fit_norm_baselines
 from .preprocessing import clip_rms_spikes
-
-from .interface import TimeSeries
 
 _SCENARIO_ID = 0
 

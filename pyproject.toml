@@ -49,6 +49,15 @@ dev = [
 pythonpath = ["src"]
 testpaths = ["src/tests"]
 
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]  # line length is a formatting concern, not gated here
+
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"

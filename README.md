@@ -1,5 +1,7 @@
 # Industrial Sensor Anomaly Detection API
 
+[![CI](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml/badge.svg)](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml)
+
 A FastAPI service that detects faults in industrial vibration sensors. For each sensor it learns normal behavior from a private `fit` stream, scores a private `pred` stream in 2-hour windows with a 1-hour stride, and raises alarms for real fault windows without reacting to every isolated spike. The project is migrating toward model deployment with MLflow tracking, registry promotion, and Dockerized runtime/test environments.
 
 > This public repo ships without private datasets, labels, or fitted artifacts. Reference figures are included as generated reports only.
@@ -18,10 +20,8 @@ AnomalyDetection2026/
 |   |-- 0.01-acp-exploratory-data-analysis.ipynb
 |   `-- 3.01-acp-model-debugging.ipynb
 |-- data/
-|   |-- raw/                            # private immutable parquet files and labels
-|   |   `-- labels/                     # private incident windows
-|   |-- interim/                        # ignored temporary transformed data
-|   `-- processed/                      # ignored final derived data products
+|   `-- raw/                            # private immutable parquet files and labels
+|       `-- labels/                     # private incident windows
 |-- reports/
 |   `-- figures/                        # generated plots, screenshots, GIFs, report assets
 |-- cache/                              # local fitted model artifacts, ignored by Git
@@ -31,7 +31,19 @@ AnomalyDetection2026/
 `-- pyproject.toml
 ```
 
-This layout follows Cookiecutter Data Science more closely: raw inputs live under `data/raw`, generated report graphics live under `reports/figures`, and notebooks are named with phase, author initials, and description.
+### Conventions And Deliberate Divergences From Cookiecutter Data Science
+
+The layout follows the Cookiecutter Data Science (CCDS) convention, with a few intentional divergences for a deployment-focused project. The table makes each choice explicit so the structure is not mistaken for missing pieces.
+
+| CCDS convention | This repo | Why |
+|---|---|---|
+| `requirements.txt` / `setup.py` | `pyproject.toml` + `uv.lock` | One source of truth for metadata and dependencies, with a fully pinned lockfile for reproducible builds. Dependencies are split into runtime, `test`, `dev`, and `notebooks` groups so the API image installs only what it serves with. |
+| `models/` directory | `cache/models/` (Git-ignored) + MLflow registry | The MLflow registry is the source of truth for promotable models; `cache/models/` only holds local fitted artifacts for fast offline replay. Neither is committed. |
+| Single `src/` package | `src/sample_processing/` + `src/analysis/` | The deployable service (`sample_processing`) is separated from offline-only code (`analysis`: evaluation, MLflow, plotting). Only `sample_processing` is copied into the API image, keeping it lean and free of private or analysis code. |
+| `data/raw` | same | Raw inputs are immutable and Git-ignored; only the READMEs are tracked. Derived products are written to `reports/figures/` or `cache/`, never back into `data/`. |
+| `reports/figures` | same | All generated graphics live here, never inside `notebooks/`. |
+| `notebooks/` named `phase.NN-initials-description` | same | For example `0.01-acp-exploratory-data-analysis`. Phases are numbered only when a notebook exists; gaps (no phase 1 or 2 notebook) are intentional, not missing work. |
+| `references/`, `src/data`, `src/features` scaffolding | omitted | Unused CCDS scaffolding is left out rather than committed empty. |
 
 ## Problem And Evaluation
 
@@ -89,9 +101,6 @@ The model lifecycle runs locally on MLflow tracking and registry storage backed 
 - **Promote.** Deployment is an alias move, so promotion or rollback is a registry update rather than a code change.
 - **Serve.** The FastAPI service can load the promoted bundle once at startup; if the registry is unavailable it can still fall back to runtime fit/predict behavior.
 
-![MLflow experiment comparison](reports/figures/mlflow/experiments.png)
-![MLflow model registry and production alias](reports/figures/mlflow/registry.png)
-
 Below, the deployed service replays `sensor_9` through `/predict`; the promoted model raises a single alert inside the labelled incident window.
 
 ![Deployed model serving a live sensor stream](reports/figures/mlflow/deploy_demo.gif)
@@ -117,7 +126,7 @@ Restore private files under [data/raw/README.md](data/raw/README.md) and [data/r
 | Service | Dockerfile target | What is copied into the image | What is mounted at runtime |
 |---|---|---|---|
 | `api` | `api` | `src/sample_processing` only | Nothing private; callers send data over HTTP |
-| `test` | `test` | `src/sample_processing`, `src/tests` | `./data:/app/data:ro` |
+| `test` | `test` | `src/sample_processing`, `src/analysis`, `src/tests` | `./data:/app/data:ro` |
 | `inference-test` | `test` | Same image as `test` | Same read-only private-data mount |
 | `notebooks` | `notebooks` | `src/sample_processing`, `src/analysis` | `./notebooks`, `./reports`, `./data:ro`, `./cache` |
 
