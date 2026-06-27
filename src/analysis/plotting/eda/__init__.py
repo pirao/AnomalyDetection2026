@@ -1,4 +1,4 @@
-"""EDA widgets used by ``notebooks/01_eda.ipynb``."""
+"""EDA widgets used by ``notebooks/0.01-acp-exploratory-data-analysis.ipynb``."""
 
 from .rms_widget import create_rms_scenario_widget
 from .scenario_inspector import create_scenario_inspector

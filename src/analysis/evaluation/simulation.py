@@ -1,4 +1,4 @@
-"""Single-scenario offline replay — the per-batch model + alert-engine loop.
+"""Single-scenario offline replay - the per-batch model + alert-engine loop.
 
 ``simulate_offline_replay_one_scenario`` is the public entry point. It picks a
 batching mode (``time`` or ``row``), drives ``_simulate_replay_batches`` over
@@ -25,7 +25,13 @@ from .batching import df_to_timeseries, iter_row_batches, iter_time_batches
 from .incidents import get_incident_spans
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATA_DIR = _REPO_ROOT / "data"
+_CANONICAL_DATA_DIR = _REPO_ROOT / "data" / "raw"
+_LEGACY_DATA_DIR = _REPO_ROOT / "data"
+DEFAULT_DATA_DIR = (
+    _CANONICAL_DATA_DIR
+    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
+    else _LEGACY_DATA_DIR
+)
 
 
 def _infer_expected_samples_from_pipeline(
@@ -403,7 +409,7 @@ def simulate_offline_replay_one_scenario(
     ----------
     model :
         Optional pre-fitted ``AnomalyModel``. When provided the ``fit`` step is
-        skipped entirely — only ``model_params_override`` (alarm-rule params)
+        skipped entirely - only ``model_params_override`` (alarm-rule params)
         is applied before each batch. Pass ``None`` (default) to keep the
         existing fit-from-data behaviour.
     """

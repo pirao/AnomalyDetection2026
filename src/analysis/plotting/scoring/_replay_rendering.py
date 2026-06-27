@@ -3,10 +3,10 @@
 Extracts the two compute-heavy functions from ``offline_replay_widget`` so that
 the widget module stays focused on state management and UI wiring:
 
-- ``_compute_replay_plot_state`` — translates a replay DataFrame into
+- ``_compute_replay_plot_state`` - translates a replay DataFrame into
   pre-classified x-coordinate lists (anomaly, pending, open, realert,
   group events, resets) for both the raw-candidate and emitted-alert views.
-- ``_plot_replay_column`` — draws the six-panel diagnostic figure column
+- ``_plot_replay_column`` - draws the six-panel diagnostic figure column
   (scores, raw engine candidates, emitted API alerts, cause breakdown,
   active channels, per-channel residuals + group severity).
 
@@ -40,7 +40,7 @@ def _with_split_view(split_view_value: str, pred_replay_df: pd.DataFrame, fit_re
         .reset_index(drop=True)
     )
 
-# ── Color palette ───────────────────────────────────────────────────────────────
+# -- Color palette ---------------------------------------------------------------
 
 _D_VEL_COLOR = "#1f77b4"
 _D_ACCEL_COLOR = "#ff7f0e"
@@ -60,7 +60,7 @@ _RAW_GROUP6_FORMING_COLOR = "#f28e8b"
 _RESET_COLOR = "#7f7f7f"
 
 
-# ── Low-level utilities ─────────────────────────────────────────────────────────
+# -- Low-level utilities ---------------------------------------------------------
 
 def _fmt_time_axis(ax):
     loc = mdates.AutoDateLocator()
@@ -101,7 +101,7 @@ def _marker_handle(
     )
 
 
-# ── Plot-state computation ──────────────────────────────────────────────────────
+# -- Plot-state computation ------------------------------------------------------
 
 def _compute_replay_plot_state(plot_df: pd.DataFrame, *, use_index: bool, alert_params) -> dict[str, object]:
     time_series = pd.to_datetime(
@@ -253,7 +253,7 @@ def _compute_replay_plot_state(plot_df: pd.DataFrame, *, use_index: bool, alert_
     }
 
 
-# ── Figure column renderer ──────────────────────────────────────────────────────
+# -- Figure column renderer ------------------------------------------------------
 
 def _plot_replay_column(
     axes_col,

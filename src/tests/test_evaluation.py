@@ -1,18 +1,18 @@
 """
 End-to-end pipeline evaluation.
 
-Each test runs the full fit → batched-predict pipeline against a real parquet
+Each test runs the full fit -> batched-predict pipeline against a real parquet
 scenario and compares alert timestamps against the ground-truth incident windows
-from labels/incidents.yaml.
+from the private incident-label YAML.
 
 Scoring intent
 --------------
-* No-incident scenarios (TN): alert must NOT fire  → precision signal
+* No-incident scenarios (TN): alert must NOT fire  -> precision signal
 * Incident scenarios (TP):    at least one alert must land inside the window
-                               → recall signal
+                               -> recall signal
 * Multi-incident scenarios:   the engine must re-arm after normal periods
                                so EVERY incident window gets at least one alert
-                               → advanced recall
+                               -> advanced recall
 """
 
 import pytest
@@ -23,7 +23,7 @@ from tests.conftest import NO_INCIDENT_IDS
 from tests.conftest import SINGLE_INCIDENT_IDS as _SINGLE_INCIDENT_IDS
 from tests.conftest import alert_hits_window, any_alert_in_incidents
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# -- Helper --------------------------------------------------------------------
 
 
 def _incident_windows(incidents: dict, sid: int) -> list[dict]:
@@ -35,14 +35,14 @@ def _incident_windows(incidents: dict, sid: int) -> list[dict]:
     ]
 
 
-# ── No-incident scenarios: no false positives ─────────────────────────────────
+# -- No-incident scenarios: no false positives ---------------------------------
 
 
 @pytest.mark.parametrize("scenario_id", NO_INCIDENT_IDS)
 def test_no_alert_when_no_incident(scenario_alerts, scenario_id):
     """
     Scenarios with zero incidents must produce zero alerts.
-    Any alert here is a false positive — degrading precision.
+    Any alert here is a false positive - degrading precision.
     """
     alerts = scenario_alerts[scenario_id]
     assert (
@@ -50,7 +50,7 @@ def test_no_alert_when_no_incident(scenario_alerts, scenario_id):
     ), f"Scenario {scenario_id} has no incidents but got alerts at: {alerts}"
 
 
-# ── Single-incident scenarios: alert fires within window ─────────────────────
+# -- Single-incident scenarios: alert fires within window ---------------------
 
 
 @pytest.mark.parametrize("scenario_id", _SINGLE_INCIDENT_IDS)
@@ -69,7 +69,7 @@ def test_alert_fires_in_incident_window_single(scenario_alerts, incidents, scena
     ), f"Scenario {scenario_id}: expected alert inside {windows}, got {alerts}"
 
 
-# ── Multi-incident scenarios ──────────────────────────────────────────────────
+# -- Multi-incident scenarios --------------------------------------------------
 
 
 @pytest.mark.parametrize("scenario_id", _MULTI_INCIDENT_IDS)
@@ -115,7 +115,7 @@ def test_every_incident_window_gets_an_alert(scenario_alerts, incidents, scenari
     ), f"Scenario {scenario_id}: the following incident windows had no alert: {missed}"
 
 
-# ── Aggregate quality metrics ─────────────────────────────────────────────────
+# -- Aggregate quality metrics -------------------------------------------------
 
 
 def test_precision_above_threshold(scenario_alerts, incidents):

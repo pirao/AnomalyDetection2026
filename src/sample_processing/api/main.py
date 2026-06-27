@@ -1,9 +1,9 @@
 """FastAPI service exposing per-sensor fit and predict endpoints.
 
 Serving sources, in priority order:
-  1. ``_models``  — runtime-fit models keyed by the raw ``sensor_id`` string,
+  1. ``_models``  - runtime-fit models keyed by the raw ``sensor_id`` string,
      produced by ``/fit`` (or injected by the offline evaluation harness).
-  2. ``_bundle``  — the registered pre-fitted bundle keyed by int ``scenario_id``,
+  2. ``_bundle``  - the registered pre-fitted bundle keyed by int ``scenario_id``,
      loaded from the MLflow registry ``@production`` alias at startup.
 
 The registry client (``mlflow``) and the offline ``analysis`` package are NOT
@@ -54,7 +54,7 @@ def _load_registry_bundle() -> None:
         wrapper = load_for_serving(REGISTRY_ALIAS)
         _bundle.update(wrapper.unwrap_python_model()._models)
         _logger.info("Loaded %d models from registry @%s", len(_bundle), REGISTRY_ALIAS)
-    except Exception as exc:  # noqa: BLE001 — degrade gracefully on any failure
+    except Exception as exc:  # noqa: BLE001 - degrade gracefully on any failure
         _logger.warning(
             "Registry bundle unavailable (%s); serving runtime-fit models only.", exc
         )
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Industrial Sensor Anomaly Detection API", lifespan=lifespan)
 
 
-# ── Contracts (do not change) ─────────────────────────────────────────────────
+# -- Contracts (do not change) -------------------------------------------------
 
 
 class DataPoint(BaseModel):
@@ -112,10 +112,10 @@ class PredictResponse(BaseModel):
     sensor_id: str
     anomaly: bool
     alert: bool
-    timestamp: str  # ISO 8601 — last timestamp of the submitted batch
+    timestamp: str  # ISO 8601 - last timestamp of the submitted batch
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 
 def _to_timeseries(points: list[DataPoint]) -> TimeSeries:
@@ -147,7 +147,7 @@ def _scenario_id_from_sensor_id(sensor_id: str) -> int | None:
         return None
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# -- Endpoints -----------------------------------------------------------------
 
 
 @app.post("/fit", response_model=FitResponse)

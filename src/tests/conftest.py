@@ -9,13 +9,26 @@ from fastapi.testclient import TestClient
 
 from sample_processing.model.current.anomaly_model import load_pipeline_params
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# -- Paths ---------------------------------------------------------------------
 
 _BASE = Path(__file__).parent.parent.parent
-DATA_DIR = _BASE / "data"
-LABELS_PATH = _BASE / "labels" / "incidents.yaml"
+_CANONICAL_DATA_DIR = _BASE / "data" / "raw"
+_LEGACY_DATA_DIR = _BASE / "data"
+DATA_DIR = (
+    _CANONICAL_DATA_DIR
+    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
+    else _LEGACY_DATA_DIR
+)
 
-# ── Pipeline windowing parameters (from pipeline_hyperparams.yaml) ────────────
+_CANONICAL_LABELS_PATH = _BASE / "data" / "raw" / "labels" / "incidents.yaml"
+_LEGACY_LABELS_PATH = _BASE / "labels" / "incidents.yaml"
+LABELS_PATH = (
+    _CANONICAL_LABELS_PATH
+    if _CANONICAL_LABELS_PATH.exists()
+    else _LEGACY_LABELS_PATH
+)
+
+# -- Pipeline windowing parameters (from pipeline_hyperparams.yaml) ------------
 
 _PIPELINE = load_pipeline_params()
 WINDOW_HOURS = _PIPELINE.model_window_size_hours  # default 2.0
@@ -25,7 +38,7 @@ STRIDE_HOURS = WINDOW_HOURS - OVERLAP_HOURS  # default 1.0
 # Kept for performance tests that need a row-count baseline
 BATCH_SIZE = 50
 
-# ── Scenario IDs ──────────────────────────────────────────────────────────────
+# -- Scenario IDs --------------------------------------------------------------
 
 ALL_SCENARIO_IDS = list(range(1, 30))
 
@@ -55,14 +68,14 @@ MULTI_INCIDENT_IDS = [
     sid for sid in INCIDENT_IDS if len(_valid_windows(_INCIDENTS_RAW[sid])) >= 2
 ]
 
-# ── Reference scenario for contract / performance tests ───────────────────────
+# -- Reference scenario for contract / performance tests -----------------------
 #
 # Scenario 8 is used as the reference for all tests that need a "fit payload",
 # a "normal predict batch", and an "anomalous predict batch".
 #
 # Why scenario 8?
 #   - The baseline model produces a confirmed TP on this scenario (alert at
-#     2026-02-27T09:57 falls inside the incident window 2026-02-26T18:00 –
+#     2026-02-27T09:57 falls inside the incident window 2026-02-26T18:00 -
 #     2026-02-27T12:00), making it a reliable source of anomalous batches.
 #   - The first window of the predict file pre-dates the incident by ~9 days,
 #     giving a clean "normal" reference batch.
@@ -102,7 +115,7 @@ def _load_ref_data() -> tuple[list[dict], list[dict], list[dict]]:
     return df_to_data_points(fit_df), normal_batch, anomalous_batch
 
 
-# ── App state isolation ────────────────────────────────────────────────────────
+# -- App state isolation --------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -117,7 +130,7 @@ def _reset_app_state():
     m._engines.clear()
 
 
-# ── TestClient ────────────────────────────────────────────────────────────────
+# -- TestClient ----------------------------------------------------------------
 
 
 @pytest.fixture()
@@ -128,7 +141,7 @@ def client() -> Generator[TestClient, None, None]:
         yield c
 
 
-# ── Ground-truth labels ───────────────────────────────────────────────────────
+# -- Ground-truth labels -------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
@@ -139,7 +152,7 @@ def incidents() -> dict[int, list[dict]]:
     return {int(k): (v or []) for k, v in raw.items()}
 
 
-# ── Pre-computed scenario alerts (session-scoped) ─────────────────────────────
+# -- Pre-computed scenario alerts (session-scoped) -----------------------------
 
 
 @pytest.fixture(scope="session")
@@ -165,7 +178,7 @@ def scenario_alerts() -> dict[int, list[str]]:
     return results
 
 
-# ── Parquet helpers ───────────────────────────────────────────────────────────
+# -- Parquet helpers -----------------------------------------------------------
 
 
 def load_scenario(n: int) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -191,11 +204,11 @@ def df_to_data_points(df: pd.DataFrame) -> list[dict]:
         for _, row in df.iterrows()
     ]
 
-# Loaded once at import time — session-scoped effectively, no session fixture overhead
+# Loaded once at import time - session-scoped effectively, no session fixture overhead
 _REF_FIT, _REF_NORMAL, _REF_ANOMALOUS = _load_ref_data()
 
 
-# ── Pipeline runner ───────────────────────────────────────────────────────────
+# -- Pipeline runner -----------------------------------------------------------
 
 
 def run_scenario(
@@ -243,7 +256,7 @@ def run_scenario(
     return alerts
 
 
-# ── Incident matching ─────────────────────────────────────────────────────────
+# -- Incident matching ---------------------------------------------------------
 
 _GRACE = timedelta(hours=2)
 

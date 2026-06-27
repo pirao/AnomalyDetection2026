@@ -3,7 +3,7 @@
 Pipeline stage: EDA widget. Acts as the main visual entry point when
 exploring a single scenario end-to-end.
 
-Consumer: ``notebooks/01_eda.ipynb`` (``create_scenario_inspector``).
+Consumer: ``notebooks/0.01-acp-exploratory-data-analysis.ipynb`` (``create_scenario_inspector``).
 """
 
 import numpy as np
@@ -144,7 +144,7 @@ def _plot_scenario(
     axes[-1].set_xlabel(x_label)
     plt.setp(axes[-1].get_xticklabels(), rotation=45, ha="right")
 
-    fig.suptitle(f"Scenario {scenario_id} — RMS Features  (uptime={uptime_filter})")
+    fig.suptitle(f"Scenario {scenario_id} - RMS Features  (uptime={uptime_filter})")
     fig.tight_layout()
     plt.show()
 
@@ -166,9 +166,9 @@ def create_scenario_inspector(
     Controls
     --------
     Scenario dropdown, Time/Index toggle, Plot button.
-    X range slider  — restrict the visible sample window (maps to timestamps
+    X range slider  - restrict the visible sample window (maps to timestamps
                       in Time mode automatically).
-    Y range slider  — clip all six subplots to the same y limits.
+    Y range slider  - clip all six subplots to the same y limits.
     """
     if features is None:
         features = _FEATURES
@@ -190,7 +190,7 @@ def create_scenario_inspector(
     if default_scenario is None or default_scenario not in scenario_options:
         default_scenario = scenario_options[0]
 
-    # ── range sliders ──────────────────────────────────────────────────────
+    # -- range sliders ------------------------------------------------------
     def _scenario_ranges(sid: int) -> tuple[int, float, float]:
         """Return (n_samples, y_min, y_max) for a scenario."""
         sub = df[df[scenario_col] == sid].sort_values(time_col)
@@ -230,7 +230,7 @@ def create_scenario_inspector(
         button_style="",
     )
 
-    # ── other controls ─────────────────────────────────────────────────────
+    # -- other controls -----------------------------------------------------
     dropdown = widgets.Dropdown(
         options=scenario_options,
         value=default_scenario,
@@ -264,7 +264,7 @@ def create_scenario_inspector(
         layout=widgets.Layout(flex="1 1 auto", min_width="900px", padding="10px")
     )
 
-    # ── slider reset when scenario changes ────────────────────────────────
+    # -- slider reset when scenario changes --------------------------------
     def _reset_sliders(sid: int) -> None:
         n, y_lo, y_hi = _scenario_ranges(sid)
         step = max((y_hi - y_lo) / 200, 1e-6)
@@ -290,7 +290,7 @@ def create_scenario_inspector(
     x_full_btn.on_click(_reset_x)
     y_full_btn.on_click(_reset_y)
 
-    # ── plot callback ──────────────────────────────────────────────────────
+    # -- plot callback ------------------------------------------------------
     def update_plot(_=None):
         x_lo, x_hi = x_slider.value
         y_lo, y_hi = y_slider.value
@@ -327,7 +327,7 @@ def create_scenario_inspector(
     x_toggle.observe(lambda c: update_plot() if c["name"] == "value" else None)
     uptime_toggle.observe(lambda c: update_plot() if c["name"] == "value" else None)
 
-    # ── layout ────────────────────────────────────────────────────────────
+    # -- layout ------------------------------------------------------------
     legend_html = widgets.HTML("""
         <b>Legend</b><br><br>
         <span style="background:rgba(0,128,0,0.25);padding:2px 8px;">&nbsp;</span> uptime = True<br><br>

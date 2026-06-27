@@ -26,7 +26,7 @@ def md_table(df: pd.DataFrame) -> None:
 
 
 def plot_confusion(ax, df: pd.DataFrame, title: str) -> None:
-    """Reds heatmap of a 2×2 confusion DataFrame with integer counts annotated."""
+    """Reds heatmap of a 2x2 confusion DataFrame with integer counts annotated."""
     sns.heatmap(
         df.astype(int),
         annot=True,

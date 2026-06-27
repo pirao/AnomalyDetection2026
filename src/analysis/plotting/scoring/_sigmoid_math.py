@@ -1,14 +1,14 @@
 """Sigmoid math, cache keys, and the two-level scoring-payload builder.
 
-The payload builder is the engine behind ``create_sigmoid_scoring_widget`` —
+The payload builder is the engine behind ``create_sigmoid_scoring_widget`` -
 it pre-scores each batch once and reuses that work whenever sigmoid sliders
 (alpha, beta, threshold, top_k, fusion) move. Two module-level caches keep
 the widget responsive:
 
-- ``_fit_cache`` — keyed on (scenario_id, vel_col, accel_col); stores fitted
+- ``_fit_cache`` - keyed on (scenario_id, vel_col, accel_col); stores fitted
   ``SensorModel`` instances so that swapping only sigmoid params does not
   trigger a refit.
-- ``_score_base_cache`` — keyed on ``_ScoreBaseKey``; stores pre-scored
+- ``_score_base_cache`` - keyed on ``_ScoreBaseKey``; stores pre-scored
   batches. Alpha/beta/threshold are NOT part of this key, so slider moves
   reuse this cache and skip the expensive ``_score_df()`` call.
 """
@@ -41,12 +41,12 @@ from ._helpers import (
 )
 
 
-# Fit-layer cache: keyed on (scenario_id, vel_col, accel_col) — the only
+# Fit-layer cache: keyed on (scenario_id, vel_col, accel_col) - the only
 # inputs that require a model re-fit. All post-fit params (alpha, beta,
 # threshold, top_k, fusion) run off the cached SensorModel.
 _fit_cache: dict[tuple, SensorModel] = {}
 
-# Score-base cache: keyed on (_ScoreBaseKey) — stores scored display data
+# Score-base cache: keyed on (_ScoreBaseKey) - stores scored display data
 # and pre-scored batch tuples. Sigmoid params are NOT part of this key, so
 # alpha/beta/threshold slider moves reuse this cache and skip _score_df().
 _score_base_cache: dict[Any, dict[str, Any]] = {}
@@ -140,7 +140,7 @@ class _FastPayloadKey:
 
 @dataclass(frozen=True)
 class _ScoreBaseKey:
-    """Cache key for pre-scored data — no sigmoid params."""
+    """Cache key for pre-scored data - no sigmoid params."""
     scenario_id: Any
     vel_col: str
     accel_col: str
@@ -173,7 +173,7 @@ def _build_score_base(
 ) -> dict[str, Any]:
     """Expensive base: filter data, fit/score model, pre-score batches.
 
-    Results are cached by _ScoreBaseKey — sigmoid params (alpha, beta,
+    Results are cached by _ScoreBaseKey - sigmoid params (alpha, beta,
     threshold, top_k, fusion) are not part of this computation.
     """
     is_cyclic = False
@@ -333,7 +333,7 @@ def _build_payload_from_base(
 ) -> dict[str, Any]:
     """Fast path: apply sigmoid params to pre-scored base data.
 
-    Only runs sigmoid math and _build_batch_details_from_scored() per batch —
+    Only runs sigmoid math and _build_batch_details_from_scored() per batch -
     skips the expensive _score_df() / _score_batch() calls entirely.
     """
     sensor = base["sensor"]
@@ -515,7 +515,7 @@ def build_sigmoid_scoring_payload_fast(
       keyed by scenario/column/filter params (no sigmoid params).
     - Level 2 (payload_cache in widget): full payload keyed by all params.
 
-    Alpha/beta/threshold slider moves hit only level 2 miss → level 1 hit,
+    Alpha/beta/threshold slider moves hit only level 2 miss -> level 1 hit,
     skipping _score_df() and all per-batch _score_batch() calls entirely.
     """
     is_cyclic = False

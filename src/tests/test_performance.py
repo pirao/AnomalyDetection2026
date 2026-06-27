@@ -6,7 +6,7 @@ Verifies that the API correctly handles:
 - High-throughput sequential batches without degrading response
 - Large payload handling
 
-All payloads are drawn from the real evaluation dataset (data/).
+All payloads are drawn from the private raw evaluation dataset.
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -23,7 +23,7 @@ from tests.conftest import (
     load_scenario,
 )
 
-# ── Throughput ────────────────────────────────────────────────────────────────
+# -- Throughput ----------------------------------------------------------------
 
 
 def test_fit_then_many_predict_batches(client):
@@ -36,7 +36,7 @@ def test_fit_then_many_predict_batches(client):
 
 def test_large_fit_payload(client):
     """Fitting on a full real dataset (~700 rows) should succeed."""
-    # scenario 8 fit has 706 rows — a realistic fit payload
+    # scenario 8 fit has 706 rows - a realistic fit payload
     r = client.post("/fit", json={"sensor_id": "perf_large", "data": _REF_FIT})
     assert r.status_code == 200
     assert r.json()["status"] == "trained"
@@ -68,7 +68,7 @@ def test_sequential_batches_across_full_scenario(client):
         assert r.status_code == 200
 
 
-# ── Concurrent access ─────────────────────────────────────────────────────────
+# -- Concurrent access ---------------------------------------------------------
 
 
 def _fit_and_predict_real(sensor_id: str) -> tuple[str, bool]:

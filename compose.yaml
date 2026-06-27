@@ -1,7 +1,7 @@
 services:
   # make run - Local runtime API.
   # Builds the Dockerfile `api` target, which contains runtime dependencies and
-  # src/sample_processing only. Private data, labels, notebooks, tests, analysis
+  # src/sample_processing only. Private data, notebooks, tests, analysis
   # files, and cached models are not copied into this image.
   api:
     build:
@@ -20,7 +20,6 @@ services:
     command: uv run --no-sync pytest src/tests -v
     volumes:
       - ./data:/app/data:ro
-      - ./labels:/app/labels:ro
     profiles:
       - test
 
@@ -34,14 +33,13 @@ services:
     command: uv run --no-sync pytest src/tests/test_evaluation.py -v --tb=short
     volumes:
       - ./data:/app/data:ro
-      - ./labels:/app/labels:ro
     profiles:
       - inference-test
 
   # make notebooks - JupyterLab analysis environment.
   # Builds the Dockerfile `notebooks` target. Notebook files, generated figures,
   # private inputs, and local cache artifacts stay on the host and are mounted at
-  # runtime. data/ and labels/ are read-only; cache/ is writable for regenerated
+  # runtime. data/ is read-only; reports/ and cache/ are writable for regenerated
   # fitted-model artifacts.
   notebooks:
     build:
@@ -54,8 +52,8 @@ services:
       - "8888:8888"
     volumes:
       - ./notebooks:/app/notebooks
+      - ./reports:/app/reports
       - ./data:/app/data:ro
-      - ./labels:/app/labels:ro
       - ./cache:/app/cache
     profiles:
       - notebooks

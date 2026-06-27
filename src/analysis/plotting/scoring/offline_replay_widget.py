@@ -67,12 +67,12 @@ def _effective_model_params(
 
 def _format_timestamp(ts):
     ts = pd.to_datetime(ts, errors="coerce", utc=True)
-    return "—" if pd.isna(ts) else ts.strftime("%Y-%m-%d %H:%M")
+    return "-" if pd.isna(ts) else ts.strftime("%Y-%m-%d %H:%M")
 
 
 def _format_delta_hours(value):
     if pd.isna(value):
-        return "—"
+        return "-"
     return f"{float(value):+.2f}h"
 
 
@@ -203,7 +203,7 @@ def create_offline_replay_widget_ui(
     scenario_options = sorted(df[scenario_col].dropna().unique().tolist())
     initial_scenario_id = default_state.get("scenario_id", scenario_options[0] if scenario_options else None)
 
-    # Load once at init — avoids repeated YAML reads on every slider change.
+    # Load once at init - avoids repeated YAML reads on every slider change.
     _pipeline_params = load_pipeline_params()
     _alert_params = load_alert_params()
 
@@ -438,7 +438,7 @@ def create_offline_replay_widget_ui(
             anomaly_fill_color=anomaly_fill_color,
             time_col=time_col,
         )
-        fig.suptitle(f"Scenario {scenario_id} — Offline replay (fit-trained, {show} windows)", y=0.995)
+        fig.suptitle(f"Scenario {scenario_id} - Offline replay (fit-trained, {show} windows)", y=0.995)
         plt.tight_layout()
         return fig
 
@@ -469,7 +469,7 @@ def create_offline_replay_widget_ui(
                 anomaly_fill_color=anomaly_fill_color,
                 time_col=time_col,
             )
-            fig.suptitle(f"Scenario {sid} â€” Offline replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
+            fig.suptitle(f"Scenario {sid} - Offline replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
             plt.tight_layout()
             display(fig)
             plt.close(fig)
@@ -569,7 +569,7 @@ def create_offline_replay_widget_ui(
             height_ratios = [2.6, 1.8, 1.4, 1.5, 1.8, 3.0]
             fig, axes = plt.subplots(6, 1, figsize=(18, 28), sharex=True, gridspec_kw={"height_ratios": height_ratios})
             _plot_replay_column(axes, replay_plot_df, incidents=incidents, use_index=use_index, split_view_value=split_view_btn.value, model_params=model_params, alert_params=_alert_params, title="Offline replay", anomaly_fill_color=anomaly_fill_color, time_col=time_col)
-            fig.suptitle(f"Scenario {sid} — Offline replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
+            fig.suptitle(f"Scenario {sid} - Offline replay (fit-trained, {split_view_btn.value} windows)", y=0.995)
             plt.tight_layout()
             display(fig)
             plt.close(fig)

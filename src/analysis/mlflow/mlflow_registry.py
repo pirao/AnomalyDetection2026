@@ -4,7 +4,7 @@ This is the *deployment-versioning* counterpart to ``mlflow_experiments.py``
 (which only does experiment tracking / comparison). It packages the per-scenario
 fitted models from a model-cache version into ONE pyfunc model, registers it
 under a single name, copies the cache's change-detection fingerprints onto the
-registry version as tags, and promotes a version via an **alias** (MLflow 3 — the
+registry version as tags, and promotes a version via an **alias** (MLflow 3 - the
 deprecated Staging/Production *stages* are not used).
 
 Why one registered model (not 29): the 29 sensors are calibrations of the same
@@ -248,7 +248,7 @@ def register_bundle(
     """Log cache ``v{version}`` as a pyfunc bundle and register a new registry version.
 
     The cache meta's fingerprints (``data_digest``/``config_hash``/``git_sha``/
-    ``fingerprint``) are copied onto the registry version as tags — the cache
+    ``fingerprint``) are copied onto the registry version as tags - the cache
     meta is the single source of truth, so nothing is recomputed here.
 
     When ``link_metrics=True`` (default), the function looks up the
@@ -324,6 +324,6 @@ def register_bundle(
 
 
 def load_for_serving(alias: str = "production"):
-    """Load the aliased registry version as a pyfunc — what FastAPI would call."""
+    """Load the aliased registry version as a pyfunc - what FastAPI would call."""
     mlflow.set_tracking_uri(_TRACKING_URI)
     return mlflow.pyfunc.load_model(f"models:/{REGISTERED_MODEL_NAME}@{alias}")

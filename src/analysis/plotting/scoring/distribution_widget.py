@@ -3,7 +3,7 @@
 Compares fit / pred-normal / per-scenario pred-incident residual
 distributions within a single scenario group. Lets the user tune
 thresholds and x-ranges while seeing where incident mass sits relative
-to the healthy fit baseline. Consumer: ``notebooks/01_eda.ipynb``.
+to the healthy fit baseline. Consumer: ``notebooks/0.01-acp-exploratory-data-analysis.ipynb``.
 """
 
 from __future__ import annotations

@@ -1,17 +1,17 @@
-"""Offline evaluation — simulate the production batching and scoring lifecycle.
+"""Offline evaluation - simulate the production batching and scoring lifecycle.
 
 Re-exports the public surface of the submodules below so callers can do
 ``from analysis.evaluation import ...`` without reaching into them directly.
 
 Module layout
 -------------
-- ``batching``     — payload conversion + time/row batch iterators
-- ``incidents``    — incident span extraction, labels I/O, alert-window matching
-- ``simulation``   — single-scenario offline replay (the per-batch model loop)
-- ``evaluation``   — multi-scenario inference-test orchestration + metric reports
+- ``batching``     - payload conversion + time/row batch iterators
+- ``incidents``    - incident span extraction, labels I/O, alert-window matching
+- ``simulation``   - single-scenario offline replay (the per-batch model loop)
+- ``evaluation``   - multi-scenario inference-test orchestration + metric reports
 
 Notebook display helpers (``md_table``, ``plot_confusion``) live in
-``analysis.plotting`` — they depend on seaborn/IPython and must NOT be pulled
+``analysis.plotting`` - they depend on seaborn/IPython and must NOT be pulled
 into this ``.venv``-safe import path.
 
 Consumers: ``plotting.scoring.offline_replay_widget``, ``plotting.scoring.widgets``,

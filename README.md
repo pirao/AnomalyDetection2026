@@ -1,73 +1,51 @@
 # Industrial Sensor Anomaly Detection API
 
-A FastAPI service that detects faults in industrial vibration sensors. For each sensor it learns "normal" from a private `fit` file, then scores a private `pred` stream in 2-hour windows (1-hour stride) and raises alarms for real fault windows — without reacting to every isolated spike. The full lifecycle (track → register → promote → serve) is managed with MLflow.
+A FastAPI service that detects faults in industrial vibration sensors. For each sensor it learns normal behavior from a private `fit` stream, scores a private `pred` stream in 2-hour windows with a 1-hour stride, and raises alarms for real fault windows without reacting to every isolated spike. The project is migrating toward model deployment with MLflow tracking, registry promotion, and Dockerized runtime/test environments.
 
-> This public repo ships without the private datasets, labels, or fitted artifacts. Reference figures are included as visual summaries only.
+> This public repo ships without private datasets, labels, or fitted artifacts. Reference figures are included as generated reports only.
 
 ## Repository Structure
 
 ```text
 AnomalyDetection2026/
-├── src/
-│   ├── sample_processing/              # deployable service (lean runtime image)
-│   │   ├── api/
-│   │   │   └── main.py                 # FastAPI: /fit, /predict, /health; loads @production at startup
-│   │   └── model/
-│   │       ├── baseline/               # single-feature z-score detector + simple alert engine
-│   │       │   ├── anomaly_model.py
-│   │       │   ├── alert_engine.py
-│   │       │   └── hyperparameters/model_hyperparams.yaml
-│   │       ├── current/                # residual-space detector + tiered alert engine
-│   │       │   ├── anomaly_model.py
-│   │       │   ├── sensor_model.py
-│   │       │   ├── normalization.py
-│   │       │   ├── preprocessing.py
-│   │       │   ├── alerting/           # engine, group_logic, priority_queue
-│   │       │   └── hyperparameters/    # norm_model_hyperparams.yaml, alert_hyperparams.yaml
-│   │       ├── shared/
-│   │       │   └── pipeline_hyperparams.yaml
-│   │       └── scenario_groups.py      # sensor → scenario-group routing
-│   ├── analysis/                       # offline only — not imported by the runtime service
-│   │   ├── evaluation/                 # API-replay benchmark: batching, incidents, simulation, metrics
-│   │   ├── mlflow/                     # tracking, registry, model cache, deployment demo
-│   │   │   ├── mlflow_experiments.py   # run logging + baseline-vs-current comparison
-│   │   │   ├── mlflow_registry.py      # register, promote alias, load_for_serving
-│   │   │   ├── model_cache.py          # fingerprinted artifact cache
-│   │   │   └── deploy_demo.py          # generates notebooks/_images/mlflow/deploy_demo.gif
-│   │   └── plotting/                   # notebook visualisation widgets
-│   │       ├── scoring/                # sigmoid scoring + API replay widgets
-│   │       ├── eda/                    # RMS and scenario inspector widgets
-│   │       ├── reporting.py            # md_table, plot_confusion (seaborn; notebook-only)
-│   │       └── style.py                # set_plot_style() — shared serif rcParams
-│   └── tests/                          # contract, model, evaluation, performance tests
-├── notebooks/
-│   ├── 01_eda.ipynb                    # exploratory data analysis
-│   ├── 02_model_debugging.ipynb        # model development, scoring, evaluation
-│   └── _images/                        # exported figures
-│       ├── mlflow/                     # deploy_demo.gif, experiments.png, registry.png
-│       └── widget_exports/             # sigmoid scoring + API replay exports (all 29 scenarios)
-├── data/                               # private sensor parquet files (see data/README.md)
-├── labels/                             # private incident labels (see labels/README.md)
-├── cache/                              # fitted model artifacts, .pkl ignored (see cache/README.md)
-├── Dockerfile
-├── compose.yaml
-├── Makefile
-└── pyproject.toml
+|-- src/
+|   |-- sample_processing/              # deployable service package
+|   |   |-- api/                        # FastAPI: /fit, /predict, /health
+|   |   `-- model/                      # baseline/current detectors and alert engines
+|   |-- analysis/                       # offline-only evaluation, MLflow, plotting helpers
+|   `-- tests/                          # contract, model, evaluation, performance tests
+|-- notebooks/
+|   |-- 0.01-acp-exploratory-data-analysis.ipynb
+|   `-- 3.01-acp-model-debugging.ipynb
+|-- data/
+|   |-- raw/                            # private immutable parquet files and labels
+|   |   `-- labels/                     # private incident windows
+|   |-- interim/                        # ignored temporary transformed data
+|   `-- processed/                      # ignored final derived data products
+|-- reports/
+|   `-- figures/                        # generated plots, screenshots, GIFs, report assets
+|-- cache/                              # local fitted model artifacts, ignored by Git
+|-- Dockerfile
+|-- compose.yaml
+|-- Makefile
+`-- pyproject.toml
 ```
+
+This layout follows Cookiecutter Data Science more closely: raw inputs live under `data/raw`, generated report graphics live under `reports/figures`, and notebooks are named with phase, author initials, and description.
 
 ## Problem And Evaluation
 
-Each scenario has a private `fit` split (used only to estimate normal behavior) and a `pred` split that is replayed as the evaluation stream. Labels are private fault windows. The API receives `pred` in overlapping batches and returns alarms; the evaluator scores them **by event window**:
+Each scenario has a private `fit` split used to estimate normal behavior and a private `pred` split replayed as the evaluation stream. Incident labels define private fault windows. The API receives `pred` in overlapping batches and returns alarms; the evaluator scores them by event window:
 
-- **True positive** — an alarm overlaps a labelled fault window.
-- **False negative** — no alarm overlaps the window.
-- **False positive** — an alarm fires in a no-event scenario.
+- **True positive:** an alarm overlaps a labelled fault window.
+- **False negative:** no alarm overlaps the window.
+- **False positive:** an alarm fires in a no-event scenario.
 
-Precision, recall, and F1 summarize these. No-event scenarios matter as much as faults: frequent false alarms make an alerting system untrustworthy.
+Precision, recall, and F1 summarize these. No-event scenarios matter as much as faults because frequent false alarms make an alerting system untrustworthy.
 
 ## Results: Baseline vs Current
 
-Measured on the private benchmark. The current model replaces a single global velocity z-score with four group-specific residual-space detectors plus a tiered alert engine.
+Measured on the private benchmark. The current model replaces a single global velocity z-score with group-specific residual-space detectors plus a tiered alert engine.
 
 | Metric | Baseline | Current |
 |---|---:|---:|
@@ -75,86 +53,84 @@ Measured on the private benchmark. The current model replaces a single global ve
 | Recall | 0.273 | **0.909** |
 | F1 | 0.279 | **0.952** |
 
-**Alarm quality:** the baseline emitted 21 alarms — only ~6 useful, with 4 false positives across the 7 no-event scenarios. The current model emits 29 alarms at ~0.79 efficiency with **zero false positives**. Remaining tuning leads: scenarios 6 and 27 (missed), 7 and 29 (partial coverage).
+The baseline emitted 21 alarms with several false positives across no-event scenarios. The current model emits 29 alarms at about 0.79 alert efficiency with zero false positives. Remaining tuning leads: scenarios 6 and 27 missed, scenarios 7 and 29 partially covered.
 
 ## Model
 
 The detector is intentionally small and inspectable:
 
-1. **Baseline per sensor.** Each scenario's `fit` split defines its healthy mean/std; residuals are measured in those units.
-2. **Scoring.** Residuals pass through a group-tuned sigmoid; the strongest samples in each 2-hour batch are aggregated (top-K occupancy) into one fusion score. Group settings live in [norm_model_hyperparams.yaml](src/sample_processing/model/current/hyperparameters/norm_model_hyperparams.yaml).
+1. **Self baseline per sensor.** Each scenario's `fit` split defines its healthy mean/std; residuals are measured in those units.
+2. **Scoring.** Residuals pass through group-tuned sigmoid functions; the strongest samples in each 2-hour batch are aggregated into one fusion score.
 3. **Alarm selection.** A tiered engine turns the noisy detection stream into a few well-timed alarms using per-channel confirmation, grouped-channel promotion, cooldown, and reset rules.
 
 | Aspect | Baseline | Current |
 |---|---|---|
-| Detector | One global velocity-norm z-score | Four group-specific residual detectors |
+| Detector | One global velocity-norm z-score | Group-specific residual detectors |
 | Features | Velocity RMS collapsed to one norm | Residual-space scoring on all RMS channels |
 | Aggregation | Fraction of anomalous samples | Top-K occupancy on the 2h batch |
 | Alert state | Single lock | Tiered ownership: confirmation, cooldown, holdback, reset |
 
-![Sigmoid scoring example](notebooks/_images/widget_exports/sigmoid_scoring/scenario_2.png)
+![Sigmoid scoring example](reports/figures/widget_exports/sigmoid_scoring/scenario_2.png)
 
-The model produces many anomaly markers, but the API does not alert on every one — the alert layer decides when movement is strong and coordinated enough to report.
+The model produces many anomaly markers, but the API does not alert on every one. The alert layer decides when movement is strong and coordinated enough to report.
 
-![Scenario 2 offline replay](notebooks/_images/widget_exports/offline_replay/scenario_2.png)
+![Scenario 2 offline replay](reports/figures/widget_exports/offline_replay/scenario_2.png)
 
-![Alert hierarchy](notebooks/assets/alert_hierarchy/alert-hierarchy-demo.svg)
+![Alert hierarchy](reports/figures/alert_hierarchy/alert-hierarchy-demo.svg)
 
-More exported scenarios are in [notebooks/_images/widget_exports](notebooks/_images/widget_exports).
+More exported scenarios are in [reports/figures/widget_exports](reports/figures/widget_exports).
 
 ## MLflow Tracking, Registry And Deployment
 
-The model lifecycle runs end to end on MLflow (tracking + registry, SQLite-backed at `mlflow.db`).
+The model lifecycle runs locally on MLflow tracking and registry storage backed by `mlflow.db`.
 
-- **Track.** Baseline and current are evaluated through the exact FastAPI path and logged as comparable runs in the `baseline-vs-current` experiment (metrics, params, dataset) — so shipping the current model is evidence-backed (see Results above).
-- **Register.** The 29 per-sensor fitted models are packaged into **one** pyfunc bundle registered as `anomaly-detector-current` — one model, not 29, because the sensors are calibrations of the same detector routed by `sensor_id`. Each version carries the data/config/git **fingerprint** tying it to the exact run that validated it.
-- **Promote.** Deployment is an **alias** move (`@production`) — promotion or rollback is one line, no code change.
-- **Serve.** The FastAPI service loads the `@production` bundle once at startup (pre-fitted — **no runtime training**); if the registry is unavailable it degrades to runtime-fit (`/fit` + `/predict`).
+- **Track.** Baseline and current are evaluated through comparable runs in the `baseline-vs-current` experiment with metrics, parameters, and dataset fingerprints.
+- **Register.** The 29 per-sensor fitted models are packaged into one pyfunc bundle registered as `anomaly-detector-current` because the sensors are calibrations of the same detector routed by `sensor_id`.
+- **Promote.** Deployment is an alias move, so promotion or rollback is a registry update rather than a code change.
+- **Serve.** The FastAPI service can load the promoted bundle once at startup; if the registry is unavailable it can still fall back to runtime fit/predict behavior.
 
-![MLflow experiment comparison](notebooks/_images/mlflow/experiments.png)
-![MLflow model registry and @production alias](notebooks/_images/mlflow/registry.png)
+![MLflow experiment comparison](reports/figures/mlflow/experiments.png)
+![MLflow model registry and production alias](reports/figures/mlflow/registry.png)
 
-Below, the deployed service replays `sensor_9` through `/predict`; the `@production` model raises a single alert that lands inside the labelled incident window — produced entirely from the registry, with no runtime fit.
+Below, the deployed service replays `sensor_9` through `/predict`; the promoted model raises a single alert inside the labelled incident window.
 
-![Deployed model serving a live sensor stream](notebooks/_images/mlflow/deploy_demo.gif)
+![Deployed model serving a live sensor stream](reports/figures/mlflow/deploy_demo.gif)
 
 ## How To Run
 
 ```bash
-make help            # show the Docker shortcuts and their roles
-make run             # build + start only the API on localhost:8000
+make help            # show Docker shortcuts and their roles
+make run             # build and start only the API on localhost:8000
 make test            # run the Dockerized pytest suite
 make inference-test  # run the private benchmark gate; can take about 15 minutes
 make notebooks       # start JupyterLab on localhost:8888
 make stop            # stop Docker Compose services
 
-mlflow ui --backend-store-uri sqlite:///mlflow.db        # browse local experiments + registry
+mlflow ui --backend-store-uri sqlite:///mlflow.db
 uv run --extra notebooks python -m analysis.mlflow.deploy_demo --sensor 9
 ```
 
-Restore the private files in [data/README.md](data/README.md) and [labels/README.md](labels/README.md) before running `make test`, `make inference-test`, or the notebooks. Notebook `02_model_debugging.ipynb` uses the same evaluation criteria as `src/tests/test_evaluation.py`.
+Restore private files under [data/raw/README.md](data/raw/README.md) and [data/raw/labels/README.md](data/raw/labels/README.md) before running `make test`, `make inference-test`, or the notebooks. During the migration, the code still falls back to the previous local ignored layout if the canonical `data/raw` files are not present.
 
 ## Docker Image Layout
-
-The Docker setup follows the same separation as the project structure:
 
 | Service | Dockerfile target | What is copied into the image | What is mounted at runtime |
 |---|---|---|---|
 | `api` | `api` | `src/sample_processing` only | Nothing private; callers send data over HTTP |
-| `test` | `test` | `src/sample_processing`, `src/tests` | `./data:/app/data:ro`, `./labels:/app/labels:ro` |
-| `inference-test` | `test` | Same image as `test` | Same read-only benchmark mounts |
-| `notebooks` | `notebooks` | `src/sample_processing`, `src/analysis` | `./notebooks`, `./data:ro`, `./labels:ro`, `./cache` |
+| `test` | `test` | `src/sample_processing`, `src/tests` | `./data:/app/data:ro` |
+| `inference-test` | `test` | Same image as `test` | Same read-only private-data mount |
+| `notebooks` | `notebooks` | `src/sample_processing`, `src/analysis` | `./notebooks`, `./reports`, `./data:ro`, `./cache` |
 
 Important Docker rules for this project:
 
-- `COPY . .` copies the whole Docker build context, not just `src/`. That is why notebooks, exported images, tests, and other repo files previously appeared in the API image.
-- `data/`, `labels/`, `cache/`, and `notebooks/` are excluded from the Docker build context and supplied with Compose bind mounts when a service needs them.
-- `:ro` means read-only. The test and notebook containers can read private benchmark inputs, but they cannot modify those host folders.
-- `/app/.venv` is created inside the Linux image by `uv sync`; the host `.venv` is ignored so a Windows virtual environment is never copied into the container.
-- `uv run --no-sync` is used in container commands because the image build already created the environment. Runtime commands should use that frozen environment instead of changing it at startup.
+- The API image does not contain private data, notebooks, tests, analysis code, generated figures, or cached model artifacts.
+- Private data is mounted read-only into test and notebook containers.
+- `reports/` is mounted into the notebook container so exported figures are generated outside `notebooks/`.
+- `/app/.venv` is created inside the Linux image by `uv sync`; the host `.venv` is ignored.
+- `uv run --no-sync` is used in container commands because image builds already created the environment.
 
 ## Reproducibility And License
 
-Hyperparameters are versioned under `src/sample_processing/model/.../hyperparameters/`; fitted models are cached locally under `cache/models/v{N}/` (`.pkl` ignored); MLflow runs and registry live in `mlflow.db`. Reference figures in `notebooks/_images/` are kept in the repo.
+Hyperparameters are versioned under `src/sample_processing/model/.../hyperparameters/`; fitted models are cached locally under `cache/models/`; MLflow tracking uses `mlflow.db`; generated visual summaries live under `reports/figures/`.
 
-Released under the MIT License — applies to the code and documentation here, not to private datasets, labels, or fitted artifacts.
+Released under the MIT License. The license applies to the code and documentation here, not to private datasets, labels, or fitted artifacts.

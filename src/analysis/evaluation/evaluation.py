@@ -1,6 +1,6 @@
 """Multi-scenario private-benchmark orchestration, metrics, and diagnostics.
 
-``run_inference_test_evaluation`` is the canonical evaluation entry point —
+``run_inference_test_evaluation`` is the canonical evaluation entry point -
 it mirrors the private evaluation logic in ``src/tests/test_evaluation.py``, prints the
 aggregate metrics plus a compact per-scenario coverage table, and optionally
 explores group reassignments for the worst performers.
@@ -411,7 +411,7 @@ def build_inference_test_notebook_summary(report: dict[str, Any]) -> dict[str, A
     window_metric_cards_df = build_incident_window_metric_cards_df(report)
     interpretation_note = (
         "Scenario matrix: each scenario is one instance regardless of how many incident "
-        "windows it has — a PARTIAL (1/2 covered) counts the same as a full TP. "
+        "windows it has - a PARTIAL (1/2 covered) counts the same as a full TP. "
         "Window matrix: each incident window is one instance, so PARTIAL scenarios "
         "contribute both a TP and a FN."
     )
@@ -743,7 +743,7 @@ def diagnose_group_reassignment(
             })
 
     print(
-        f"Scenario {scenario_id} — current group: {current_group} "
+        f"Scenario {scenario_id} - current group: {current_group} "
         f"({get_scenario_group_label(scenario_id)})"
     )
     print(

@@ -1,9 +1,9 @@
-"""Notebook-02 sigmoid scoring widget — the per-scenario replay debugger.
+"""Notebook-02 sigmoid scoring widget - the per-scenario replay debugger.
 
 Drives ``_build_sigmoid_scoring_figure`` with cached model fits and
 pre-scored batches so sliders for alpha/beta/threshold respond without a
 refit. Exposes a "Export all defaults" action that renders one figure per
-scenario using the current slider values. Consumer: ``notebooks/02_model_debugging.ipynb``.
+scenario using the current slider values. Consumer: ``notebooks/3.01-acp-model-debugging.ipynb``.
 """
 
 from __future__ import annotations

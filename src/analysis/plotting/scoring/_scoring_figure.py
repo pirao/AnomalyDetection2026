@@ -1,7 +1,7 @@
 """Figure renderer for ``create_sigmoid_scoring_widget``.
 
-Builds the 9-row × 2-column diagnostics figure that shows every stage of
-the scoring pipeline — raw series, processed series, normalized distances,
+Builds the 9-row x 2-column diagnostics figure that shows every stage of
+the scoring pipeline - raw series, processed series, normalized distances,
 residuals, per-channel sigmoid scores, occupancy scores, modality fusion,
 and active-modality bands. Consumed exclusively by ``scoring_widget`` and
 by its export path (export_all_defaults).
@@ -265,7 +265,7 @@ def _build_sigmoid_scoring_figure(
         if confirmed_anchor_flags and confirmed_anchor_flags[-1]:
             ax_fus.axvspan(batch_x[-1], batch_x[-1], color="#2ca02c", alpha=0.18, zorder=0)
     ax_fus.set_ylim(-0.02, 1.05)
-    ax_fus.set_title(f"fusion score — confirmed anomaly ({ap.confirmation_count}/{ap.confirmation_window} gate, centered anchor)")
+    ax_fus.set_title(f"fusion score - confirmed anomaly ({ap.confirmation_count}/{ap.confirmation_window} gate, centered anchor)")
     ax_fus.set_ylabel("fusion score")
     ax_fus.legend(loc="upper left")
     ax_fus.grid(True, alpha=0.25)

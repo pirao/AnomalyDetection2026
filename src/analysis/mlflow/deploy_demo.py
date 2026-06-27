@@ -1,14 +1,14 @@
 """Render a GIF of the deployed anomaly detector serving a live sensor stream.
 
 This is the *deployment* demo: it drives the FastAPI service exactly as production
-does — replaying one sensor's ``pred`` split in 2h windows on a 1h stride through
-``POST /predict`` — while the service serves the model currently promoted to
+does - replaying one sensor's ``pred`` split in 2h windows on a 1h stride through
+``POST /predict`` - while the service serves the model currently promoted to
 ``@production`` in the MLflow Registry (loaded once at startup, **no runtime fit**).
 
-The figure shows the six raw channels (3 components × velocity / acceleration) for
+The figure shows the six raw channels (3 components x velocity / acceleration) for
 the sensor, with the **fit (training) split** drawn first as context and the
 **pred split** revealed window by window as it streams. No masking is applied:
-both uptime and downtime are shown (downtime reads near zero — those are the flat
+both uptime and downtime are shown (downtime reads near zero - those are the flat
 dips). The labelled incident window is shaded and a red line marks the timestamp
 where the service raised an alert; the caption names the served registry version.
 
@@ -19,7 +19,7 @@ or ``uv run --extra notebooks``:
     python -m analysis.mlflow.deploy_demo --sensor 9
     python -m analysis.mlflow.deploy_demo --sensor 9 --http http://localhost:8000
 
-Output: ``notebooks/_images/mlflow/deploy_demo.gif``.
+Output: ``reports/figures/mlflow/deploy_demo.gif``.
 """
 
 from __future__ import annotations
@@ -39,9 +39,22 @@ _SRC = _REPO / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-DATA_DIR = _REPO / "data"
-LABELS_PATH = _REPO / "labels" / "incidents.yaml"
-DEFAULT_OUT = _REPO / "notebooks" / "_images" / "mlflow" / "deploy_demo.gif"
+_CANONICAL_DATA_DIR = _REPO / "data" / "raw"
+_LEGACY_DATA_DIR = _REPO / "data"
+DATA_DIR = (
+    _CANONICAL_DATA_DIR
+    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
+    else _LEGACY_DATA_DIR
+)
+
+_CANONICAL_LABELS_PATH = _REPO / "data" / "raw" / "labels" / "incidents.yaml"
+_LEGACY_LABELS_PATH = _REPO / "labels" / "incidents.yaml"
+LABELS_PATH = (
+    _CANONICAL_LABELS_PATH
+    if _CANONICAL_LABELS_PATH.exists()
+    else _LEGACY_LABELS_PATH
+)
+DEFAULT_OUT = _REPO / "reports" / "figures" / "mlflow" / "deploy_demo.gif"
 MODEL_NAME = "anomaly-detector-current"
 
 WINDOW = timedelta(hours=2.0)
@@ -53,7 +66,7 @@ COMPONENTS = ["x", "y", "z"]
 MODALITIES = [("vel_rms", "Velocity RMS"), ("accel_rms", "Acceleration RMS")]
 
 
-# ── Data ────────────────────────────────────────────────────────────────────
+# -- Data --------------------------------------------------------------------
 
 
 def _load(sensor: int):
@@ -95,7 +108,7 @@ def _windows(pred: pd.DataFrame):
         cur += STRIDE
 
 
-# ── Serving ─────────────────────────────────────────────────────────────────
+# -- Serving -----------------------------------------------------------------
 
 
 def _served_version() -> str:
@@ -107,7 +120,7 @@ def _served_version() -> str:
         mlflow.set_tracking_uri(f"sqlite:///{(_REPO / 'mlflow.db').as_posix()}")
         mv = MlflowClient().get_model_version_by_alias(MODEL_NAME, "production")
         return f"v{mv.version}"
-    except Exception:  # noqa: BLE001 — caption is cosmetic
+    except Exception:  # noqa: BLE001 - caption is cosmetic
         return "@production"
 
 
@@ -157,7 +170,7 @@ def stream(sensor: int, pred: pd.DataFrame, http: str | None) -> list[pd.Timesta
     return alert_ts
 
 
-# ── Animation ───────────────────────────────────────────────────────────────
+# -- Animation ---------------------------------------------------------------
 
 
 def render(
@@ -206,12 +219,12 @@ def render(
 
     fig, axes = plt.subplots(3, 2, figsize=(14, 9), sharex=True)
     fig.suptitle(
-        f"Deployed anomaly detector — live stream of sensor_{sensor}",
+        f"Deployed anomaly detector - live stream of sensor_{sensor}",
         fontsize=20, fontweight="bold", y=0.98,
     )
     fig.text(
         0.5, 0.935,
-        f"served by {MODEL_NAME}@production ({served})  ·  MLflow Registry → FastAPI /predict  ·  pre-fitted, no runtime training",
+        f"served by {MODEL_NAME}@production ({served})  |  MLflow Registry -> FastAPI /predict  |  pre-fitted, no runtime training",
         ha="center", fontsize=12, style="italic", color="0.3",
     )
 
@@ -237,14 +250,14 @@ def render(
             alines = [ax.axvline(ax_x, color="red", lw=1.6, visible=False) for ax_x in alert_x]
             if r == 0:
                 ax.set_title(col_title, fontsize=16)
-                ax.text(boundary, ax.get_ylim()[1], " pred →", ha="left", va="top", fontsize=9, color="0.4")
+                ax.text(boundary, ax.get_ylim()[1], " pred ->", ha="left", va="top", fontsize=9, color="0.4")
                 ax.text(boundary, ax.get_ylim()[1], "fit ", ha="right", va="top", fontsize=9, color="0.4")
             if c == 0:
                 ax.set_ylabel(comp.upper(), fontsize=18, rotation=0, labelpad=18, va="center")
             panels.append((pred_vals, pred_line, now, alines))
 
     for c in range(2):
-        axes[2][c].set_xlabel("sample index  (fit ▏ pred — no masking: uptime + downtime)", fontsize=12)
+        axes[2][c].set_xlabel("sample index  (fit | pred - no masking: uptime + downtime)", fontsize=12)
 
     legend_handles = [
         Line2D([], [], color="0.6", lw=1.2, label="fit (training)"),
@@ -273,7 +286,7 @@ def render(
             for ax_x, al in zip(alert_x, alines):
                 al.set_visible(pos >= ax_x)
         n_alerts = sum(1 for ax_x in alert_x if pos >= ax_x)
-        flag = "  ⚠ ALERT" if n_alerts else ""
+        flag = "  [!] ALERT" if n_alerts else ""
         status.set_text(f"stream: {pd.Timestamp(fe):%Y-%m-%d %H:%M}\nalerts: {n_alerts}{flag}")
         return ()
 
@@ -283,7 +296,7 @@ def render(
     plt.close(fig)
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+# -- CLI ---------------------------------------------------------------------
 
 
 def main() -> None:

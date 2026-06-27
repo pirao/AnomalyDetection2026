@@ -1,55 +1,30 @@
-# Keep the Docker build context small and deployment-safe.
-#
-# Private benchmark inputs and generated artifacts are intentionally excluded
-# from image layers. Services that need them mount host folders at runtime from
-# compose.yaml instead of copying them into the Docker image.
-
-# Private/local inputs
-# Mounted read-only by test, inference-test, and notebooks services.
+# Private/local inputs supplied by Compose mounts
 data/
 labels/
-.env
-.env.*
+cache/
 
-# Virtualenv / VCS
-# /app/.venv is created inside the image by uv; the host .venv must never shadow
-# it or be copied from Windows into a Linux image.
+# Virtual environments and VCS
 .venv/
 .git/
 .gitignore
+.worktrees/
 
-# Python caches
+# Python caches and test caches
 __pycache__/
-**/__pycache__/
 *.pyc
 .pytest_cache/
-.ruff_cache/
 pytest-cache-files-*/
 
-# Notebook/generated artifacts
-# Notebook files and exported figures stay in the repo for review, but the
-# notebooks service mounts them at runtime instead of baking them into images.
-.ipynb_checkpoints/
+# Notebook and generated artifacts
 notebooks/
-docs/
-docker-history*.txt
-
-# MLflow and experiment outputs
-mlflow.db
+reports/
+.ipynb_checkpoints/
 mlruns/
 mlartifacts/
-notebooks/mlruns/
+mlflow.db
 
-# Model/cache artifacts
-# Cached fitted models are local artifacts; they are mounted when needed and are
-# intentionally not part of any current image.
-cache/
-*.pkl
-
-# Local tooling and assistant state
+# Local tooling
 .claude/
 .superpowers/
-.worktrees/
-.agents/
-.codex/
 *.claude
+METRICS.md

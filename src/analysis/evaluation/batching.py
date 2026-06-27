@@ -4,10 +4,10 @@ These helpers convert a scenario DataFrame into the exact payload shape the
 production API consumes and iterate over it in the two batching modes the
 service supports:
 
-- **time batches**  — fixed-duration half-open windows anchored at the first
+- **time batches**  - fixed-duration half-open windows anchored at the first
   prediction timestamp with ``stride = window - overlap`` (matches the live
   ``/predict`` rule and ``src/tests/test_evaluation.py``).
-- **row batches**   — fixed-row slices used by ``generate_report.py`` for
+- **row batches**   - fixed-row slices used by ``generate_report.py`` for
   quick local replays over a compact number of predictions.
 """
 

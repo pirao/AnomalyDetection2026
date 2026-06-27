@@ -1,6 +1,6 @@
 {
   "cdd2a0028e07": {
-    "description": "Initial dataset — 29 scenarios, 6 channels (vel_rms_xyz + accel_rms_xyz)",
+    "description": "Initial dataset - 29 scenarios, 6 channels (vel_rms_xyz + accel_rms_xyz)",
     "date": "2026-06-12",
     "n_scenarios": 29,
     "n_files": 58,

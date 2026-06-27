@@ -6,7 +6,7 @@ Then compare the two parent runs with::
 
     mlflow ui --backend-store-uri sqlite:///mlflow.db
 
-**Baseline files required** — before calling this function you must provide:
+**Baseline files required** - before calling this function you must provide:
     src/sample_processing/model/baseline/anomaly_model.py
     src/sample_processing/model/baseline/alert_engine.py
     src/sample_processing/model/baseline/__init__.py
@@ -54,7 +54,7 @@ def _evaluate_baseline_scenarios(
 ) -> dict[int, list[str]]:
     """Run the baseline model (no API layer) on each scenario.
 
-    Returns a dict mapping scenario_id → list of alert timestamp ISO strings,
+    Returns a dict mapping scenario_id -> list of alert timestamp ISO strings,
     in the same format that ``summarize_inference_test_metrics`` expects.
     """
     from sample_processing.model.baseline.alert_engine import AlertEngine as BaselineAlertEngine
@@ -102,7 +102,7 @@ def _evaluate_current_scenarios_from_cache(
 ) -> dict[int, list[str]]:
     """Run the current model from pre-fitted cache weights on the pred split only.
 
-    Mirrors _evaluate_baseline_scenarios but skips re-fitting — the weights come
+    Mirrors _evaluate_baseline_scenarios but skips re-fitting - the weights come
     from model_cache rather than from the fit split. This means the evaluated
     artifact is identical to what register_bundle packages, making the fingerprint
     join in fetch_evaluation_metrics strictly valid.
@@ -214,9 +214,9 @@ def _log_model_run(
     """Log one parent run + one nested child per scenario.
 
     Parent run params use dot notation:
-    - ``pipeline.*``  — windowing/batching config (shared across models)
-    - ``model.*``     — model hyperparameters (incl. ``model.groups.group_N.*``)
-    - ``alert.*``     — alert engine hyperparameters (current model only)
+    - ``pipeline.*``  - windowing/batching config (shared across models)
+    - ``model.*``     - model hyperparameters (incl. ``model.groups.group_N.*``)
+    - ``alert.*``     - alert engine hyperparameters (current model only)
 
     Parent metrics: precision/recall/f1 at machine and event level, total_alerts.
     Each nested child holds per-scenario tags and metrics for drill-down.
@@ -267,7 +267,7 @@ def _log_model_run(
             }
         )
 
-        # Per-event summary (fault-window-level; PARTIAL → 1 TP + 1 FN)
+        # Per-event summary (fault-window-level; PARTIAL -> 1 TP + 1 FN)
         if isinstance(window_confusion_df, pd.DataFrame) and not window_confusion_df.empty:
             _e_tp  = int(window_confusion_df.loc["actual positive", "predicted positive"])
             _e_fn  = int(window_confusion_df.loc["actual positive", "predicted negative"])
@@ -355,7 +355,7 @@ def compare_baseline_vs_current(
     - dataset input: scenario summary digest for reproducibility
     - N nested child runs, one per scenario, with per-scenario tags and metrics
 
-    **Requires baseline model files** — see module docstring.
+    **Requires baseline model files** - see module docstring.
 
     Parameters
     ----------
@@ -365,9 +365,9 @@ def compare_baseline_vs_current(
         matches ``make inference-test``).
     data_dir :
         Directory containing ``sensor_data_fit_{id}.parquet`` files. Ignored when
-        ``full_df`` is provided. Defaults to ``data/``.
+        ``full_df`` is provided. Defaults to the canonical raw data directory.
     labels_path :
-        Path to ``labels/incidents.yaml``. Defaults to the standard location.
+        Path to the incident-label YAML. Defaults to the standard raw labels location.
     alert_params_path :
         Path to alert hyperparameters YAML. Defaults to the standard location.
     scenario_ids :
@@ -376,7 +376,7 @@ def compare_baseline_vs_current(
     Returns
     -------
     dict
-        ``{"baseline_report": ..., "current_report": ...}`` — the full report
+        ``{"baseline_report": ..., "current_report": ...}`` - the full report
         dicts from each evaluation run, including all notebook summary DataFrames.
     """
     import mlflow

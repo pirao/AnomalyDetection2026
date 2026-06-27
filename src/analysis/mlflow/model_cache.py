@@ -31,7 +31,13 @@ __all__ = [
 
 # This module lives at src/analysis/mlflow/model_cache.py -> repo root is 3 up.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATA_DIR = _REPO_ROOT / "data"
+_CANONICAL_DATA_DIR = _REPO_ROOT / "data" / "raw"
+_LEGACY_DATA_DIR = _REPO_ROOT / "data"
+DEFAULT_DATA_DIR = (
+    _CANONICAL_DATA_DIR
+    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
+    else _LEGACY_DATA_DIR
+)
 DEFAULT_HYPERPARAMS_PATH = (
     _REPO_ROOT
     / "src/sample_processing/model/current/hyperparameters/norm_model_hyperparams.yaml"
@@ -50,7 +56,7 @@ def _log(message: str) -> None:
     print(message)
 
 
-# ── Fingerprinting helpers (shared with mlflow_experiments.py) ────────────────
+# -- Fingerprinting helpers (shared with mlflow_experiments.py) ----------------
 # These answer the three independent "did it change?" questions for a model
 # version: did the DATA change, did the CONFIG change, did the CODE change.
 
@@ -83,7 +89,7 @@ def git_revision(repo_path: Path = _REPO_ROOT) -> dict[str, str]:
     """Return ``{"git_sha", "git_dirty"}`` for the repo containing ``repo_path``.
 
     ``git_sha`` is the short HEAD commit (12 chars). ``git_dirty`` is the string
-    ``"True"``/``"False"`` — a dirty working tree means the recorded sha does NOT
+    ``"True"``/``"False"`` - a dirty working tree means the recorded sha does NOT
     faithfully describe the code that produced the artifact. Falls back to
     ``"unknown"`` when not in a git repo or GitPython is unavailable.
     """
@@ -103,7 +109,7 @@ def model_fingerprint(data_digest_value: str, config_hash: str, git_sha: str) ->
     """Combine the three change axes (data + config + code) into one identity hash.
 
     Two artifacts with the same fingerprint were produced from the same data,
-    the same config and the same committed code — so a new version would be a
+    the same config and the same committed code - so a new version would be a
     duplicate. ``git_dirty`` is deliberately NOT folded in: it is recorded
     separately as a trust flag, not part of identity.
     """
@@ -283,7 +289,7 @@ def fit_and_save(
     skip_if_unchanged :
         When ``True`` (default) and ``version`` is auto-assigned, skip refitting
         and return the existing latest version if its ``fingerprint`` (data +
-        config + git sha) matches the current inputs — avoids minting duplicate
+        config + git sha) matches the current inputs - avoids minting duplicate
         versions. A dirty working tree disables the skip: the git sha cannot be
         trusted, so a fresh version is always created.
 

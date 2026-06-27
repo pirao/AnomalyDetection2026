@@ -2,8 +2,8 @@
 
 Builds histograms of per-sensor residuals near labeled windows and an
 overlayed sigmoid curve so the user can solve for alpha/beta from two
-shared anchor points. The widget only calibrates — it does not replay the
-pipeline. Consumer: ``notebooks/01_eda.ipynb``.
+shared anchor points. The widget only calibrates - it does not replay the
+pipeline. Consumer: ``notebooks/0.01-acp-exploratory-data-analysis.ipynb``.
 """
 
 from __future__ import annotations

@@ -7,7 +7,22 @@ __pycache__/
 METRICS.md
 pytest-cache-files-*/
 
-# Private benchmark inputs
+# Private benchmark inputs (canonical CCDS layout)
+data/raw/**
+!data/raw/
+!data/raw/README.md
+!data/raw/labels/
+!data/raw/labels/README.md
+
+# Generated local data products
+data/interim/**
+!data/interim/
+!data/interim/README.md
+data/processed/**
+!data/processed/
+!data/processed/README.md
+
+# Legacy private benchmark inputs kept ignored during migration
 data/*.parquet
 labels/*.yaml
 
@@ -19,6 +34,7 @@ cache/models/
 mlflow.db
 mlruns/
 mlartifacts/
+notebooks/mlruns/
 
 # Local/private assistant configuration
 .claude/

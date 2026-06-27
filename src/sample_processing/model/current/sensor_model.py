@@ -212,7 +212,7 @@ class SensorModel:
         model_window_size_hours: float,
         expected_samples_per_window: int | None,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, int]:
-        """Shared preprocessing: score df → uptime-gated vel/accel splits.
+        """Shared preprocessing: score df -> uptime-gated vel/accel splits.
 
         Returns (scored_df, up_vel, up_accel, expected_samples_per_window).
         Sigmoid, flagging, and persistency are applied later in _modality_channel_details.

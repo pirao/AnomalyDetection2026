@@ -3,7 +3,7 @@
 Pipeline stage: EDA widget. Renders the six RMS channels for one or more
 selected scenarios with split boundaries and incident overlays.
 
-Consumer: ``notebooks/01_eda.ipynb`` (``create_rms_scenario_widget``).
+Consumer: ``notebooks/0.01-acp-exploratory-data-analysis.ipynb`` (``create_rms_scenario_widget``).
 """
 
 import pandas as pd

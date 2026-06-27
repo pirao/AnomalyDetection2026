@@ -1,22 +1,14 @@
-# Private Data Placeholder
+# Data Directory
 
-This directory is intentionally kept without private benchmark data.
-
-To run the full local benchmark workflow, place the private parquet files here:
+This project follows the Cookiecutter Data Science data lifecycle.
 
 ```text
-sensor_data_fit_1.parquet
-sensor_data_pred_1.parquet
-...
-sensor_data_fit_29.parquet
-sensor_data_pred_29.parquet
+data/
+|-- raw/          # private immutable benchmark inputs
+|-- interim/      # temporary transformed data, ignored by Git
+`-- processed/    # final modeling/evaluation data products, ignored by Git
 ```
 
-Expected columns:
+The public repository keeps only documentation and lightweight manifests here. Private datasets are supplied locally and mounted into Docker containers at runtime; they are not copied into images and are not committed to Git.
 
-- `sampled_at`: timestamp
-- `uptime`: boolean operating-state flag
-- `vel_rms_x`, `vel_rms_y`, `vel_rms_z`: velocity RMS channels
-- `accel_rms_x`, `accel_rms_y`, `accel_rms_z`: acceleration RMS channels
-
-Private data files are ignored by Git and should not be committed.
+See [raw/README.md](raw/README.md) for the expected private parquet files and [raw/labels/README.md](raw/labels/README.md) for the incident-label file.

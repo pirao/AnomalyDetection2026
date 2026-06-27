@@ -21,7 +21,7 @@ from sample_processing.model.current.interface import (
     TimeSeries,
 )
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 _UTC = timezone.utc
 _BASE = datetime(2024, 1, 1, tzinfo=_UTC)
@@ -58,7 +58,7 @@ def _make_pred(*, anomalous: bool, offset: int = 0) -> PredictOutput:
     )
 
 
-# ── AnomalyModel ──────────────────────────────────────────────────────────────
+# -- AnomalyModel --------------------------------------------------------------
 
 
 class TestAnomalyModelFit:
@@ -130,7 +130,7 @@ class TestAnomalyModelPredict:
         """Data far from the training distribution should be flagged anomalous."""
         model = AnomalyModel()
         model.fit(_make_ts(500, vel_base=1.0, vel_std=0.1, seed=0))
-        # 50× the training mean → well beyond any reasonable threshold
+        # 50x the training mean -> well beyond any reasonable threshold
         result = model.predict(_make_ts(100, vel_base=50.0, vel_std=0.5, seed=99))
         assert result.anomaly_status is True
 
@@ -144,7 +144,7 @@ class TestAnomalyModelPredict:
         assert result.timestamp == batch.data[-1].timestamp
 
 
-# ── AlertEngine ───────────────────────────────────────────────────────────────
+# -- AlertEngine ---------------------------------------------------------------
 
 
 class TestAlertEngineBasicBehavior:
@@ -197,14 +197,14 @@ class TestAlertEngineReArming:
         """
         engine = AlertEngine()
 
-        # First anomaly → alert fires
+        # First anomaly -> alert fires
         d1 = engine.predict(_make_pred(anomalous=True, offset=0))
         assert d1.alert is True
 
-        # Normal observation → clears the alert state
+        # Normal observation -> clears the alert state
         engine.predict(_make_pred(anomalous=False, offset=1))
 
-        # Second anomaly → must alert again
+        # Second anomaly -> must alert again
         d3 = engine.predict(_make_pred(anomalous=True, offset=2))
         assert d3.alert is True, (
             "AlertEngine must re-arm after a normal observation so it can "
@@ -241,12 +241,12 @@ class TestAlertEngineReArming:
         d_normal = engine.predict(_make_pred(anomalous=False, offset=1))
         assert d_normal.alert is False  # no alert on normal batch
 
-        # State should now be clear — next anomaly fires
+        # State should now be clear - next anomaly fires
         d_re = engine.predict(_make_pred(anomalous=True, offset=2))
         assert d_re.alert is True
 
 
-# ── AnomalyModel + AlertEngine integration ───────────────────────────────────
+# -- AnomalyModel + AlertEngine integration -----------------------------------
 
 
 class TestModelEngineIntegration:

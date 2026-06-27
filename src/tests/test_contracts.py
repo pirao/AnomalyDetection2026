@@ -3,8 +3,8 @@ API contract tests.
 
 These tests verify that the HTTP API exposes the correct contracts:
 correct status codes, response shapes, field types, and state semantics.
-All fit/predict payloads are drawn from the real evaluation dataset (data/).
-Reference scenario: 8 (confirmed TP baseline — training on healthy data then
+All fit/predict payloads are drawn from the private raw evaluation dataset.
+Reference scenario: 8 (confirmed TP baseline - training on healthy data then
 presenting incident-window data reliably triggers an alert).
 """
 
@@ -16,7 +16,7 @@ from tests.conftest import (
     _REF_NORMAL,
 )
 
-# ── /health ───────────────────────────────────────────────────────────────────
+# -- /health -------------------------------------------------------------------
 
 
 def test_health_returns_ok(client):
@@ -25,7 +25,7 @@ def test_health_returns_ok(client):
     assert r.json() == {"status": "ok"}
 
 
-# ── /fit ──────────────────────────────────────────────────────────────────────
+# -- /fit ----------------------------------------------------------------------
 
 
 def test_fit_returns_200_and_trained_status(client):
@@ -51,7 +51,7 @@ def test_fit_missing_data_field_returns_422(client):
     assert r.status_code == 422
 
 
-# ── /predict ──────────────────────────────────────────────────────────────────
+# -- /predict ------------------------------------------------------------------
 
 
 def test_predict_before_fit_returns_404(client):
@@ -119,7 +119,7 @@ def test_predict_missing_sensor_id_returns_422(client):
     assert r.status_code == 422
 
 
-# ── State semantics ───────────────────────────────────────────────────────────
+# -- State semantics -----------------------------------------------------------
 
 
 def test_retrain_resets_alert_state(client):
@@ -130,7 +130,7 @@ def test_retrain_resets_alert_state(client):
     r1 = client.post("/predict", json={"sensor_id": sid, "data": _REF_ANOMALOUS})
     assert r1.json()["alert"] is True, "Expected alert on first anomalous batch"
 
-    # Retrain — must reset alert state
+    # Retrain - must reset alert state
     client.post("/fit", json={"sensor_id": sid, "data": _REF_FIT})
 
     r2 = client.post("/predict", json={"sensor_id": sid, "data": _REF_ANOMALOUS})

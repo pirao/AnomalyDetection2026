@@ -21,7 +21,7 @@
 # Individual alert ownership mode
 # -------------------------------
 # exclusive:
-#   current behavior — one individual channel owns the episode until reset
+#   current behavior - one individual channel owns the episode until reset
 #   or grouped ownership takes over.
 # shared:
 #   multiple confirmed individual channels may open independently during the
