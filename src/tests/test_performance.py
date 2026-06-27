@@ -11,6 +11,7 @@ All payloads are drawn from the private raw evaluation dataset.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import pytest
 from fastapi.testclient import TestClient
 
 from sample_processing.api.main import app
@@ -19,8 +20,13 @@ from tests.conftest import (
     _REF_FIT,
     _REF_NORMAL,
     BATCH_SIZE,
+    DATA_AVAILABLE,
     df_to_data_points,
     load_scenario,
+)
+
+pytestmark = pytest.mark.skipif(
+    not DATA_AVAILABLE, reason="private benchmark data not present"
 )
 
 # -- Throughput ----------------------------------------------------------------

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ._utils import l2_norm
 
-
 VEL_GROUP = frozenset({"vel_rms_x", "vel_rms_y", "vel_rms_z"})
 ACCEL_GROUP = frozenset({"accel_rms_x", "accel_rms_y", "accel_rms_z"})
 

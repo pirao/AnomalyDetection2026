@@ -47,6 +47,10 @@ FROM base AS test
 RUN uv sync --locked --no-dev --group test --no-install-project
 
 COPY src/sample_processing ./src/sample_processing
+# src/analysis is copied so the benchmark test can import the canonical
+# evaluator (analysis.evaluation.summarize_inference_test_metrics), the single
+# source of truth for precision/recall/F1 shared with the notebooks.
+COPY src/analysis ./src/analysis
 COPY src/tests ./src/tests
 
 RUN uv sync --locked --no-dev --group test

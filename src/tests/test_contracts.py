@@ -10,10 +10,17 @@ presenting incident-window data reliably triggers an alert).
 
 from __future__ import annotations
 
+import pytest
+
 from tests.conftest import (
     _REF_ANOMALOUS,
     _REF_FIT,
     _REF_NORMAL,
+    DATA_AVAILABLE,
+)
+
+pytestmark = pytest.mark.skipif(
+    not DATA_AVAILABLE, reason="private benchmark data not present"
 )
 
 # -- /health -------------------------------------------------------------------

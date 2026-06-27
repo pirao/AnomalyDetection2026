@@ -14,10 +14,10 @@ service degrades silently to runtime-fit serving via ``/fit``.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from datetime import datetime
 import logging
 import re
+from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel

@@ -17,11 +17,19 @@ Scoring intent
 
 import pytest
 
-from tests.conftest import INCIDENT_IDS
+from analysis.evaluation import summarize_inference_test_metrics
+from tests.conftest import (
+    DATA_AVAILABLE,
+    NO_INCIDENT_IDS,
+    alert_hits_window,
+    any_alert_in_incidents,
+)
 from tests.conftest import MULTI_INCIDENT_IDS as _MULTI_INCIDENT_IDS
-from tests.conftest import NO_INCIDENT_IDS
 from tests.conftest import SINGLE_INCIDENT_IDS as _SINGLE_INCIDENT_IDS
-from tests.conftest import alert_hits_window, any_alert_in_incidents
+
+pytestmark = pytest.mark.skipif(
+    not DATA_AVAILABLE, reason="private benchmark data not present"
+)
 
 # -- Helper --------------------------------------------------------------------
 
@@ -118,75 +126,51 @@ def test_every_incident_window_gets_an_alert(scenario_alerts, incidents, scenari
 # -- Aggregate quality metrics -------------------------------------------------
 
 
-def test_precision_above_threshold(scenario_alerts, incidents):
+_METRIC_THRESHOLD = 0.85
+
+
+@pytest.fixture(scope="session")
+def metrics_summary(scenario_alerts, incidents) -> dict:
+    """Scenario-level precision/recall/F1 from the canonical evaluator.
+
+    Delegates to ``summarize_inference_test_metrics`` - the same function the
+    analysis notebooks use - so the test and the notebooks can never disagree
+    on how precision / recall / F1 are scored.
     """
-    Precision = TP / (TP + FP) across all scenarios must exceed 50 %.
+    report = summarize_inference_test_metrics(scenario_alerts, incidents)
+    return report["summary"]
+
+
+def test_precision_above_threshold(metrics_summary):
+    """Precision = TP / (TP + FP) across all scenarios must clear the gate.
 
     A model that fires alerts indiscriminately will fail this test.
     """
-    tp = fp = 0
-    for sid, alerts in scenario_alerts.items():
-        windows = _incident_windows(incidents, sid)
-        if alerts:
-            if any_alert_in_incidents(alerts, windows):
-                tp += 1
-            else:
-                fp += 1
-
-    total = tp + fp
-    precision = tp / total if total > 0 else 0.0
-    assert (
-        precision >= 0.50
-    ), f"Precision {precision:.0%} is below 50% (TP={tp}, FP={fp})"
+    precision = metrics_summary["precision"]
+    assert precision >= _METRIC_THRESHOLD, (
+        f"Precision {precision:.0%} is below {_METRIC_THRESHOLD:.0%} "
+        f"(TP={metrics_summary['tp']}, FP={metrics_summary['fp']})"
+    )
 
 
-def test_recall_above_threshold(scenario_alerts, incidents):
-    """
-    Recall = TP / (TP + FN) across incident scenarios must exceed 30 %.
-    """
-    tp = fn = 0
-    for sid in INCIDENT_IDS:
-        windows = _incident_windows(incidents, sid)
-        if not windows:
-            continue
-        alerts = scenario_alerts[sid]
-        if any_alert_in_incidents(alerts, windows):
-            tp += 1
-        else:
-            fn += 1
-
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    assert recall >= 0.30, f"Recall {recall:.0%} is below 30% (TP={tp}, FN={fn})"
+def test_recall_above_threshold(metrics_summary):
+    """Recall = TP / (TP + FN) across incident scenarios must clear the gate."""
+    recall = metrics_summary["recall"]
+    assert recall >= _METRIC_THRESHOLD, (
+        f"Recall {recall:.0%} is below {_METRIC_THRESHOLD:.0%} "
+        f"(TP={metrics_summary['tp']}, FN={metrics_summary['fn']})"
+    )
 
 
-def test_f1_above_threshold(scenario_alerts, incidents):
-    """
-    F1 = harmonic mean of precision and recall must exceed 0.35.
+def test_f1_above_threshold(metrics_summary):
+    """F1 = harmonic mean of precision and recall must clear the gate.
 
     Balances avoiding false positives with detecting real incidents.
     """
-    tp = fp = fn = 0
-    for sid, alerts in scenario_alerts.items():
-        windows = _incident_windows(incidents, sid)
-        has_incident = bool(windows)
-        has_alert_in_window = any_alert_in_incidents(alerts, windows)
-
-        if has_alert_in_window:
-            tp += 1
-        elif alerts and not has_incident:
-            fp += 1
-        elif has_incident and not has_alert_in_window:
-            fn += 1
-
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if (precision + recall) > 0
-        else 0.0
-    )
-
-    assert f1 >= 0.35, (
-        f"F1 {f1:.2f} is below 0.35 "
-        f"(precision={precision:.0%}, recall={recall:.0%}, TP={tp}, FP={fp}, FN={fn})"
+    f1 = metrics_summary["f1"]
+    assert f1 >= _METRIC_THRESHOLD, (
+        f"F1 {f1:.2f} is below {_METRIC_THRESHOLD:.2f} "
+        f"(precision={metrics_summary['precision']:.0%}, "
+        f"recall={metrics_summary['recall']:.0%}, "
+        f"TP={metrics_summary['tp']}, FP={metrics_summary['fp']}, FN={metrics_summary['fn']})"
     )

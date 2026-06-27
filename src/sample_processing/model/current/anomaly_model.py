@@ -7,8 +7,8 @@ from typing import Any
 
 import yaml
 
-from .interface import AlertParams, ModelParams, PipelineParams, PredictOutput, TimeSeries, Weights
 from ..scenario_groups import get_scenario_group_key
+from .interface import AlertParams, ModelParams, PipelineParams, PredictOutput, TimeSeries, Weights
 from .sensor_model import SensorModel
 
 # Model- and alert-specific hyperparameters live alongside this file in
