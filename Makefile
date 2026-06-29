@@ -2,8 +2,8 @@
 
 help:
 	@echo "make run             Build and start the local API on http://localhost:8000"
-	@echo "make test            Run the Dockerized pytest suite with private data mounted read-only"
-	@echo "make inference-test  Run the private benchmark gate; this can take about 15 minutes"
+	@echo "make test            Run the fast test suite (unit, contract, performance); excludes the benchmark"
+	@echo "make inference-test  Run the private benchmark gate (test_evaluation.py); can take about 15 minutes"
 	@echo "make notebooks       Start JupyterLab on http://localhost:8888 with notebooks/cache mounted"
 	@echo "make stop            Stop Compose services"
 

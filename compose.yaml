@@ -10,22 +10,25 @@ services:
     ports:
       - "8000:8000"
 
-  # make test - Dockerized pytest helper.
+  # make test - fast Dockerized test suite (unit, contract, performance).
   # Builds the Dockerfile `test` target and mounts private benchmark inputs
-  # read-only at runtime instead of baking them into an image layer.
+  # read-only at runtime instead of baking them into an image layer. Excludes
+  # the slow benchmark (test_evaluation.py) so this stays quick; that file is
+  # run on its own by `make inference-test`.
   test:
     build:
       context: .
       target: test
-    command: uv run --no-sync pytest src/tests -v
+    command: uv run --no-sync pytest src/tests --ignore=src/tests/test_evaluation.py -v
     volumes:
       - ./data:/app/data:ro
     profiles:
       - test
 
   # make inference-test - private benchmark gate and source of reported metrics.
-  # Uses the same `test` target as `make test`, but runs only the benchmark file.
-  # It can take around 15 minutes, so it is kept behind an explicit profile.
+  # Uses the same `test` image target, but runs only the benchmark file that
+  # `make test` excludes. It can take around 15 minutes, so it is kept behind an
+  # explicit profile.
   inference-test:
     build:
       context: .

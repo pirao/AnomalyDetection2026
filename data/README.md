@@ -1,6 +1,6 @@
 # Data Directory
 
-This project follows the Cookiecutter Data Science data lifecycle, scoped to the directories this project actually uses. Derived products are written to `reports/figures/` or `cache/`, so the unused `interim/` and `processed/` stages are intentionally omitted.
+This directory holds only the data stages the project actually uses. Derived products are written to `reports/figures/` or `cache/`, so intermediate staging directories are intentionally omitted.
 
 ```text
 data/

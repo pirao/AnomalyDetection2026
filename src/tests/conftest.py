@@ -14,19 +14,16 @@ from sample_processing.model.current.anomaly_model import load_pipeline_params
 
 _BASE = Path(__file__).parent.parent.parent
 _CANONICAL_DATA_DIR = _BASE / "data" / "raw"
-_LEGACY_DATA_DIR = _BASE / "data"
-DATA_DIR = (
-    _CANONICAL_DATA_DIR
+DATA_DIR = (_CANONICAL_DATA_DIR
     if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
-    else _LEGACY_DATA_DIR
+    else print("Warning: no data found in path")
 )
 
 _CANONICAL_LABELS_PATH = _BASE / "data" / "raw" / "labels" / "incidents.yaml"
-_LEGACY_LABELS_PATH = _BASE / "labels" / "incidents.yaml"
 LABELS_PATH = (
-    _CANONICAL_LABELS_PATH
+_CANONICAL_LABELS_PATH
     if _CANONICAL_LABELS_PATH.exists()
-    else _LEGACY_LABELS_PATH
+    else print("Warning: no data found in path")
 )
 
 # -- Data availability ---------------------------------------------------------

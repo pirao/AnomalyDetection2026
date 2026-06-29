@@ -31,19 +31,18 @@ AnomalyDetection2026/
 `-- pyproject.toml
 ```
 
-### Conventions And Deliberate Divergences From Cookiecutter Data Science
+### Key Design Decisions
 
-The layout follows the Cookiecutter Data Science (CCDS) convention, with a few intentional divergences for a deployment-focused project. The table makes each choice explicit so the structure is not mistaken for missing pieces.
+The structure reflects deliberate choices for a deployment-focused project. Each is made explicit so the layout reads as intentional engineering rather than missing pieces.
 
-| CCDS convention | This repo | Why |
-|---|---|---|
-| `requirements.txt` / `setup.py` | `pyproject.toml` + `uv.lock` | One source of truth for metadata and dependencies, with a fully pinned lockfile for reproducible builds. Dependencies are split into runtime, `test`, `dev`, and `notebooks` groups so the API image installs only what it serves with. |
-| `models/` directory | `cache/models/` (Git-ignored) + MLflow registry | The MLflow registry is the source of truth for promotable models; `cache/models/` only holds local fitted artifacts for fast offline replay. Neither is committed. |
-| Single `src/` package | `src/sample_processing/` + `src/analysis/` | The deployable service (`sample_processing`) is separated from offline-only code (`analysis`: evaluation, MLflow, plotting). Only `sample_processing` is copied into the API image, keeping it lean and free of private or analysis code. |
-| `data/raw` | same | Raw inputs are immutable and Git-ignored; only the READMEs are tracked. Derived products are written to `reports/figures/` or `cache/`, never back into `data/`. |
-| `reports/figures` | same | All generated graphics live here, never inside `notebooks/`. |
-| `notebooks/` named `phase.NN-initials-description` | same | For example `0.01-acp-exploratory-data-analysis`. Phases are numbered only when a notebook exists; gaps (no phase 1 or 2 notebook) are intentional, not missing work. |
-| `references/`, `src/data`, `src/features` scaffolding | omitted | Unused CCDS scaffolding is left out rather than committed empty. |
+| Decision | Rationale |
+|---|---|
+| `pyproject.toml` + `uv.lock` for dependencies | One source of truth for metadata and dependencies, with a fully pinned lockfile for reproducible builds. Dependencies are split into runtime, `test`, `dev`, and `notebooks` groups so the API image installs only what it serves with. |
+| Models live in the MLflow registry, not the repo | The MLflow registry is the source of truth for promotable models; `cache/models/` only holds local fitted artifacts for fast offline replay. Neither is committed. |
+| Service code (`src/sample_processing/`) split from offline code (`src/analysis/`) | The deployable service is separated from offline-only code (evaluation, MLflow, plotting). Only `sample_processing` is copied into the API image, keeping it lean and free of private or analysis code. |
+| Raw data is immutable and Git-ignored | Only the data READMEs are tracked; private inputs are mounted at runtime. Derived products are written to `reports/figures/` or `cache/`, never back into `data/`. |
+| Generated figures live in `reports/figures/` | All graphics are written outside `notebooks/`, keeping notebooks diff-friendly and reproducible. |
+| Notebooks named `phase.NN-initials-description` | For example `0.01-acp-exploratory-data-analysis`. Phases are numbered only when a notebook exists; gaps are intentional, not missing work. |
 
 ## Problem And Evaluation
 
@@ -110,8 +109,8 @@ Below, the deployed service replays `sensor_9` through `/predict`; the promoted 
 ```bash
 make help            # show Docker shortcuts and their roles
 make run             # build and start only the API on localhost:8000
-make test            # run the Dockerized pytest suite
-make inference-test  # run the private benchmark gate; can take about 15 minutes
+make test            # run the fast suite (unit, contract, performance); excludes the benchmark
+make inference-test  # run the private benchmark gate (test_evaluation.py); can take about 15 minutes
 make notebooks       # start JupyterLab on localhost:8888
 make stop            # stop Docker Compose services
 
@@ -120,6 +119,20 @@ uv run --extra notebooks python -m analysis.mlflow.deploy_demo --sensor 9
 ```
 
 Restore private files under [data/raw/README.md](data/raw/README.md) and [data/raw/labels/README.md](data/raw/labels/README.md) before running `make test`, `make inference-test`, or the notebooks. During the migration, the code still falls back to the previous local ignored layout if the canonical `data/raw` files are not present.
+
+### Two-Tier Testing
+
+Tests are split into a fast machinery check and a slow quality gate. The two never overlap, so each can be run for its own purpose.
+
+| Command | Runs | What it answers | Speed |
+|---|---|---|---|
+| `make test` | `test_model.py`, `test_contracts.py`, `test_performance.py` | "Is the code wired correctly?" — unit logic, API contracts, concurrency | Fast |
+| `make inference-test` | `test_evaluation.py` only | "Is the model still good on real faults?" — precision, recall, and F1 must clear 0.85 on the private benchmark | ~15 min |
+
+- **`make test`** never touches the benchmark, so it stays quick. The unit tests use synthetic data and need no private files; the contract and performance tests skip automatically when private data is absent. The same synthetic unit tests run in CI on every push.
+- **`make inference-test`** replays every scenario through the full fit -> batched-predict -> alert pipeline and scores alarms against the labelled incident windows. It is the source of the precision/recall/F1 reported in [Results: Baseline vs Current](#results-baseline-vs-current), and it requires the private data.
+
+A few per-scenario assertions in the benchmark are expected to fail by design (the model has known coverage gaps on some scenarios); the aggregate precision/recall/F1 gate is the result that matters and tolerates those isolated misses as long as the whole still clears 0.85.
 
 ## Docker Image Layout
 

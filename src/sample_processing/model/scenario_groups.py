@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pandas as pd
@@ -37,6 +38,15 @@ SCENARIO_TO_GROUP: dict[int, str] = {
 
 DEFAULT_GROUP_KEY = "default"
 DEFAULT_GROUP_LABEL = "Unassigned group"
+
+
+def scenario_id_from_sensor_id(sensor_id) -> int | None:
+    """Parse sensor_id to scenario int; accepts 'sensor_N', 'analysis_sensor_N', or bare digit."""
+    text = str(sensor_id).strip()
+    match = re.fullmatch(r"(?:sensor|analysis_sensor)_(\d+)", text)
+    if match:
+        return int(match.group(1))
+    return int(text) if text.isdigit() else None
 
 
 def normalize_scenario_id(value: Any) -> int | None:

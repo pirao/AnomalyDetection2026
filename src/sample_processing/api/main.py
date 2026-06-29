@@ -15,7 +15,6 @@ service degrades silently to runtime-fit serving via ``/fit``.
 from __future__ import annotations
 
 import logging
-import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -138,13 +137,8 @@ def _to_timeseries(points: list[DataPoint]) -> TimeSeries:
 
 
 def _scenario_id_from_sensor_id(sensor_id: str) -> int | None:
-    match = re.fullmatch(r"(?:sensor|analysis_sensor)_(\d+)", sensor_id.strip())
-    if match is None:
-        return None
-    try:
-        return int(match.group(1))
-    except ValueError:
-        return None
+    from sample_processing.model.scenario_groups import scenario_id_from_sensor_id
+    return scenario_id_from_sensor_id(sensor_id)
 
 
 # -- Endpoints -----------------------------------------------------------------

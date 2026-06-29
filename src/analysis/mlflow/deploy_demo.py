@@ -39,6 +39,8 @@ _SRC = _REPO / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from sample_processing.serving.registry import REGISTERED_REGISTERED_MODEL_NAME  # noqa: E402
+
 _CANONICAL_DATA_DIR = _REPO / "data" / "raw"
 _LEGACY_DATA_DIR = _REPO / "data"
 DATA_DIR = (
@@ -55,7 +57,6 @@ LABELS_PATH = (
     else _LEGACY_LABELS_PATH
 )
 DEFAULT_OUT = _REPO / "reports" / "figures" / "mlflow" / "deploy_demo.gif"
-MODEL_NAME = "anomaly-detector-current"
 
 WINDOW = timedelta(hours=2.0)
 STRIDE = timedelta(hours=1.0)
@@ -118,7 +119,7 @@ def _served_version() -> str:
         from mlflow.tracking import MlflowClient
 
         mlflow.set_tracking_uri(f"sqlite:///{(_REPO / 'mlflow.db').as_posix()}")
-        mv = MlflowClient().get_model_version_by_alias(MODEL_NAME, "production")
+        mv = MlflowClient().get_model_version_by_alias(REGISTERED_MODEL_NAME, "production")
         return f"v{mv.version}"
     except Exception:  # noqa: BLE001 - caption is cosmetic
         return "@production"
@@ -224,7 +225,7 @@ def render(
     )
     fig.text(
         0.5, 0.935,
-        f"served by {MODEL_NAME}@production ({served})  |  MLflow Registry -> FastAPI /predict  |  pre-fitted, no runtime training",
+        f"served by {REGISTERED_MODEL_NAME}@production ({served})  |  MLflow Registry -> FastAPI /predict  |  pre-fitted, no runtime training",
         ha="center", fontsize=12, style="italic", color="0.3",
     )
 
@@ -310,7 +311,7 @@ def main() -> None:
     fit, pred, incidents = _load(args.sensor)
     served = _served_version()
     print(f"streaming sensor_{args.sensor} through {'HTTP ' + args.http if args.http else 'in-process app'} "
-          f"(serving {MODEL_NAME}@production {served}) ...")
+          f"(serving {REGISTERED_MODEL_NAME}@production {served}) ...")
     alerts = stream(args.sensor, pred, args.http)
     print(f"  windows alerted: {len(alerts)} -> {[str(a) for a in alerts]}")
     in_window = [a for a in alerts if any(s <= a <= e for s, e in incidents)]
