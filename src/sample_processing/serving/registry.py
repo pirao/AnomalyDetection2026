@@ -97,7 +97,18 @@ class AnomalyDetectorBundle(mlflow.pyfunc.PythonModel):
         return pd.DataFrame(results)
 
 
+def resolve_tracking_uri() -> str:
+    """Return the MLflow tracking URI to use for serving.
+
+    If the environment variable ``MLFLOW_TRACKING_URI`` is set, that is used.
+    Otherwise, a local SQLite file in the repo root is used.
+    """
+    import os
+
+    return os.environ.get("MLFLOW_TRACKING_URI", _TRACKING_URI)
+
+
 def load_for_serving(alias: str = "production"):
     """Load the aliased registry version as a pyfunc - what FastAPI would call."""
-    mlflow.set_tracking_uri(_TRACKING_URI)
+    mlflow.set_tracking_uri(resolve_tracking_uri())
     return mlflow.pyfunc.load_model(f"models:/{REGISTERED_MODEL_NAME}@{alias}")

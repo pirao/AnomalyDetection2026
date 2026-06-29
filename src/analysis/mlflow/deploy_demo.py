@@ -39,7 +39,7 @@ _SRC = _REPO / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from sample_processing.serving.registry import REGISTERED_REGISTERED_MODEL_NAME  # noqa: E402
+from sample_processing.serving.registry import REGISTERED_MODEL_NAME  # noqa: E402
 
 _CANONICAL_DATA_DIR = _REPO / "data" / "raw"
 _LEGACY_DATA_DIR = _REPO / "data"

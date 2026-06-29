@@ -10,6 +10,29 @@ services:
     ports:
       - "8000:8000"
 
+  # MLflow tracking server — registry UI + HTTP client endpoint for the api service.
+  # Mounts the existing mlflow.db and mlruns/ from the host so the server sees all
+  # registered models without any re-import step.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.13.0
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///app/mlflow.db
+      --artifacts-destination /app/mlruns
+      --host 0.0.0.0
+      --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
   # make test - fast Dockerized test suite (unit, contract, performance).
   # Builds the Dockerfile `test` target and mounts private benchmark inputs
   # read-only at runtime instead of baking them into an image layer. Excludes

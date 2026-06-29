@@ -23,9 +23,6 @@ View it with::
 
     mlflow ui --backend-store-uri sqlite:///mlflow.db   # -> Models / Model registry
 """
-
-from __future__ import annotations
-
 import json
 from pathlib import Path
 
@@ -41,9 +38,10 @@ from sample_processing.serving.registry import (
     load_for_serving as load_for_serving,  # re-exported for notebooks/back-compat
 )
 
+from sample_processing.serving.registry import resolve_tracking_uri
+
 # This module lives at src/analysis/mlflow/mlflow_registry.py -> repo root is 3 up.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_TRACKING_URI = f"sqlite:///{(_REPO_ROOT / 'mlflow.db').as_posix()}"
 DEFAULT_CACHE_ROOT = _REPO_ROOT / "cache/models"
 
 # REGISTERED_MODEL_NAME is owned by sample_processing.serving.registry (single
@@ -125,7 +123,7 @@ def fetch_evaluation_metrics(
     if not fingerprint:
         raise ValueError("Cannot link metrics: bundle has no fingerprint (re-run fit_and_save first).")
 
-    mlflow.set_tracking_uri(_TRACKING_URI)
+    mlflow.set_tracking_uri(resolve_tracking_uri())
     client = mlflow.tracking.MlflowClient()
     exp = client.get_experiment_by_name(experiment_name)
     if exp is None:
@@ -183,7 +181,7 @@ def register_bundle(
     meta = _read_cache_meta(version, cache_root)
     fingerprint = meta.get("fingerprint", "")
 
-    mlflow.set_tracking_uri(_TRACKING_URI)
+    mlflow.set_tracking_uri(resolve_tracking_uri())
     mlflow.set_experiment(EXPERIMENT_NAME)
 
     # Fetch metrics before logging the model so a missing evaluation aborts early.
