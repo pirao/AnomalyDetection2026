@@ -25,11 +25,11 @@ import pandas as pd
 from analysis.evaluation import df_to_timeseries, get_incident_spans, iter_time_batches
 from sample_processing.model.current.anomaly_model import load_pipeline_params
 from sample_processing.model.current.normalization import apply_norm_scores, fit_norm_baselines
+from sample_processing.model.current.sensor_model import SensorModel
 from sample_processing.model.scenario_groups import (
     get_scenario_group_key,
     get_scenario_group_label,
 )
-from sample_processing.model.current.sensor_model import SensorModel
 
 from ._helpers import (
     _ACCEL_COLS,
@@ -39,7 +39,6 @@ from ._helpers import (
     _series_dict_from_scored,
     _split_index_and_time,
 )
-
 
 # Fit-layer cache: keyed on (scenario_id, vel_col, accel_col) - the only
 # inputs that require a model re-fit. All post-fit params (alpha, beta,

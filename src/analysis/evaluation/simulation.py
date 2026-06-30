@@ -3,10 +3,11 @@
 ``simulate_offline_replay_one_scenario`` is the public entry point. It picks a
 batching mode (``time`` or ``row``), drives ``_simulate_replay_batches`` over
 that iterator, and returns a debug DataFrame with one row per batch that
-captures the full prediction/alert diagnostics used by notebook 02 and the
-scoring widgets.
+captures the full prediction/alert diagnostics used by the model-debugging
+notebook (1.01) and the scoring widgets.
 
-Callers: ``plotting.scoring.offline_replay_widget``, ``evaluation``, notebook 02.
+Callers: ``plotting.scoring.offline_replay_widget``, ``evaluation``, and the
+model-debugging notebook (1.01).
 """
 
 from __future__ import annotations
@@ -18,7 +19,11 @@ from typing import Any
 import pandas as pd
 
 from sample_processing.model.current.alerting import AlertEngine
-from sample_processing.model.current.anomaly_model import AnomalyModel, load_alert_params, load_pipeline_params
+from sample_processing.model.current.anomaly_model import (
+    AnomalyModel,
+    load_alert_params,
+    load_pipeline_params,
+)
 from sample_processing.model.current.interface import AlertParams, ModelParams, PredictOutput
 
 from .batching import df_to_timeseries, iter_row_batches, iter_time_batches

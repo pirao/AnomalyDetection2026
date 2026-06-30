@@ -1,10 +1,10 @@
 """MLflow comparison experiment: baseline vs current model.
 
 Run ``compare_baseline_vs_current()`` from a notebook to populate the
-"baseline-vs-current" experiment in the SQLite store at ``mlflow.db``.
-Then compare the two parent runs with::
-
-    mlflow ui --backend-store-uri sqlite:///mlflow.db
+"baseline-vs-current" experiment. Set ``MLFLOW_TRACKING_URI=http://localhost:5000``
+before calling so runs are written through the tracking server (not directly to
+the local SQLite file). View results at http://localhost:5000 after running
+``docker compose up mlflow``.
 
 **Baseline files required** - before calling this function you must provide:
     src/sample_processing/model/baseline/anomaly_model.py
@@ -24,23 +24,26 @@ from typing import Any
 
 import pandas as pd
 
+# Single source of truth for the tracking target: honors MLFLOW_TRACKING_URI
+# (e.g. the http://localhost:5000 dev server) and falls back to the local
+# sqlite file. Hardcoding the sqlite URI here would silently bypass the server
+# and write artifacts to local file:// paths the api container cannot read.
+from sample_processing.serving.registry import resolve_tracking_uri
+
 from .model_cache import (
+    _published_version_meta,
     compute_config_hash,
     data_digest,
     git_revision,
     model_fingerprint,
-    _published_version_meta
 )
-
-
 
 # This module lives at src/analysis/mlflow/mlflow_experiments.py -> repo root is 3 up.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# MLflow's file store (mlruns/) is deprecated and disabled in current versions,
-# so we track to a SQLite DB at the repo root. View with:
+# The tracking target (http dev server or local sqlite fallback) is resolved by
+# resolve_tracking_uri(); view a sqlite store with:
 #   mlflow ui --backend-store-uri sqlite:///mlflow.db
-_TRACKING_URI = f"sqlite:///{(_REPO_ROOT / 'mlflow.db').as_posix()}"
 
 DEFAULT_CACHE_ROOT = _REPO_ROOT / "cache/models"
 
@@ -57,10 +60,9 @@ def _evaluate_baseline_scenarios(
     Returns a dict mapping scenario_id -> list of alert timestamp ISO strings,
     in the same format that ``summarize_inference_test_metrics`` expects.
     """
+    from analysis.evaluation.batching import df_to_timeseries, iter_time_batches
     from sample_processing.model.baseline.alert_engine import AlertEngine as BaselineAlertEngine
     from sample_processing.model.baseline.anomaly_model import AnomalyModel as BaselineModel
-
-    from analysis.evaluation.batching import df_to_timeseries, iter_time_batches
 
     alerts_by_scenario: dict[int, list[str]] = {}
     for sid in ordered_ids:
@@ -346,8 +348,11 @@ def compare_baseline_vs_current(
     """Compare baseline and current model in MLflow experiment "baseline-vs-current".
 
     Logs two parent runs to the SQLite tracking store (``mlflow.db``):
-    - Run A (model=baseline): velocity-only L2-norm, evaluated directly without API
-    - Run B (model=current): 6-channel sigmoid, evaluated through the FastAPI test client
+    - Run A (model=baseline): velocity-only L2-norm, re-fit per scenario then scored
+      by offline replay (``simulate_offline_replay_one_scenario``); no API involved.
+    - Run B (model=current): 6-channel sigmoid loaded from pre-fitted cache weights and
+      scored by the same offline replay - identical to the registered bundle artifact,
+      which keeps the fingerprint join in ``fetch_evaluation_metrics`` valid. No API.
 
     Each parent run contains:
     - params: ``pipeline.*``, ``model.*`` (incl. group overrides), ``alert.*``
@@ -380,17 +385,21 @@ def compare_baseline_vs_current(
         dicts from each evaluation run, including all notebook summary DataFrames.
     """
     import mlflow
-
     from analysis.evaluation.evaluation import (
         _prepare_scenario_frames,
         _scenario_ids_from_data_dir,
     )
     from analysis.evaluation.incidents import load_incidents_by_scenario
     from analysis.evaluation.simulation import DEFAULT_DATA_DIR
-    from sample_processing.model.current.anomaly_model import DEFAULT_PARAMS_PATH, load_alert_params, load_model_params as load_current_model_params
     from sample_processing.model.baseline.anomaly_model import (
         AnomalyModel as BaselineModel,
+    )
+    from sample_processing.model.baseline.anomaly_model import (
         load_pipeline_params as load_baseline_pipeline_params,
+    )
+    from sample_processing.model.current.anomaly_model import DEFAULT_PARAMS_PATH, load_alert_params
+    from sample_processing.model.current.anomaly_model import (
+        load_model_params as load_current_model_params,
     )
 
     resolved_data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR
@@ -491,7 +500,7 @@ def compare_baseline_vs_current(
     baseline_cfg_hash = compute_config_hash(baseline_config)
     baseline_fp = model_fingerprint(data_version, baseline_cfg_hash, git_info["git_sha"])
 
-    mlflow.set_tracking_uri(_TRACKING_URI)
+    mlflow.set_tracking_uri(resolve_tracking_uri())
     mlflow.set_experiment("baseline-vs-current")
 
     # --- Run A: baseline (direct evaluation, no API layer) ---
@@ -535,7 +544,7 @@ def compare_baseline_vs_current(
         effective_alert_params,
         time_col=time_col,
     )
-    mlflow.set_tracking_uri(_TRACKING_URI)
+    mlflow.set_tracking_uri(resolve_tracking_uri())
     mlflow.set_experiment("baseline-vs-current")
     current_report = _build_experiment_report(current_alerts, incidents_by_scenario, ordered_ids)
 

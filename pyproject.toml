@@ -14,6 +14,8 @@ dependencies = [
     # sample_processing imports pandas in the model path, so it remains runtime.
     "pandas>=2.0.0",
     "pyyaml>=6.0",
+    "mlflow>=2.14",
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +24,6 @@ dependencies = [
 notebooks = [
     "matplotlib>=3.7",
     "seaborn>=0.13",
-    "mlflow>=2.9",
     "pyarrow>=14.0.0",
     "ipywidgets>=8.0",
     "ipython>=8.0",
@@ -48,6 +49,15 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["src/tests"]
+# These are benign deprecation/user warnings emitted by third-party deps
+# (protobuf via mlflow, starlette's test client, mlflow's pydantic models), not
+# by our code. Silenced so genuine warnings from sample_processing stay visible.
+# Re-check this list on dependency bumps.
+filterwarnings = [
+    'ignore:Type google.protobuf',
+    'ignore:Using `httpx` with `starlette.testclient`',
+    'ignore:Field "model_name" in PromptModelConfig has conflict',
+]
 
 [tool.ruff]
 target-version = "py310"
@@ -59,5 +69,5 @@ select = ["E", "F", "I"]
 ignore = ["E501"]  # line length is a formatting concern, not gated here
 
 [build-system]
-requires = ["uv_build>=0.10.9,<0.11.0"]
+requires = ["uv_build>=0.10.9,<0.12.0"]
 build-backend = "uv_build"

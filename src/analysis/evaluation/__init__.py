@@ -14,8 +14,8 @@ Notebook display helpers (``md_table``, ``plot_confusion``) live in
 ``analysis.plotting`` - they depend on seaborn/IPython and must NOT be pulled
 into this ``.venv``-safe import path.
 
-Consumers: ``plotting.scoring.offline_replay_widget``, ``plotting.scoring.widgets``,
-``analysis.mlflow.model_cache``, and notebook 02.
+Consumers: ``plotting.scoring.offline_replay_widget``, ``plotting.scoring.scoring_widget``,
+``analysis.mlflow.model_cache``, and the model-debugging notebook (1.01).
 
 ``run_inference_test_evaluation`` is the canonical scenario-level evaluation
 entry point. It mirrors ``src/tests/test_evaluation.py``.

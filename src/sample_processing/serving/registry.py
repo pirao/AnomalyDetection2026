@@ -30,7 +30,11 @@ class AnomalyDetectorBundle(mlflow.pyfunc.PythonModel):
         import pickle
 
         self._models = {}
-        bundle_dir = context.artifacts["bundle"]
+        # MLflow records the artifact sub-path with the OS separator at log time
+        # (its os.path.join bug means a model registered on Windows stores
+        # ``artifacts\\v1``). On a POSIX server that backslash is a literal
+        # filename char, so normalize it before globbing the bundle directory.
+        bundle_dir = context.artifacts["bundle"].replace("\\", "/")
         for pkl in sorted(glob.glob(os.path.join(bundle_dir, "*.pkl"))):
             sid = int(Path(pkl).stem)
             with open(pkl, "rb") as f:
@@ -112,3 +116,25 @@ def load_for_serving(alias: str = "production"):
     """Load the aliased registry version as a pyfunc - what FastAPI would call."""
     mlflow.set_tracking_uri(resolve_tracking_uri())
     return mlflow.pyfunc.load_model(f"models:/{REGISTERED_MODEL_NAME}@{alias}")
+
+
+def load_for_serving_with_metadata(alias: str = "production") -> tuple[object, dict]:
+    """Load the aliased registry pyfunc together with its provenance metadata.
+
+    Returns ``(pyfunc, meta)`` where ``meta`` carries the resolved registry
+    version and the provenance tags (``fingerprint``, ``git_sha``, ``eval.f1``)
+    recorded at registration time, so the API can report exactly what it is
+    serving without re-querying MLflow on every request.
+    """
+    mlflow.set_tracking_uri(resolve_tracking_uri())
+    client = mlflow.tracking.MlflowClient()
+    mv = client.get_model_version_by_alias(REGISTERED_MODEL_NAME, alias)
+    tags = mv.tags or {}
+    meta = {
+        "registry_version": mv.version,
+        "model_fingerprint": tags.get("fingerprint"),
+        "git_sha": tags.get("git_sha"),
+        "eval_f1": float(tags["eval.f1"]) if "eval.f1" in tags else None,
+    }
+    model = mlflow.pyfunc.load_model(f"models:/{REGISTERED_MODEL_NAME}@{alias}")
+    return model, meta

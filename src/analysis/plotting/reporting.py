@@ -3,7 +3,7 @@
 Lives in ``plotting`` (notebook-only) so it is never pulled into the production
 import chain: importing ``analysis.evaluation`` / ``analysis.mlflow`` must stay
 ``.venv``-safe, and these helpers depend on seaborn + IPython, which are only
-installed in the notebook env (IRV_env / the ``notebooks`` extra).
+installed in the notebook env (the ``notebooks`` extra).
 """
 
 from __future__ import annotations

@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 
+
 def set_plot_style():
     """Set a consistent plotting style for matplotlib figures."""
     

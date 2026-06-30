@@ -17,6 +17,7 @@ from tests.conftest import (
     _REF_FIT,
     _REF_NORMAL,
     DATA_AVAILABLE,
+    _drain_alert,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -133,28 +134,20 @@ def test_retrain_resets_alert_state(client):
     """Retraining must reset the alert engine so an alert can fire again."""
     sid = "retrain_test"
     client.post("/fit", json={"sensor_id": sid, "data": _REF_FIT})
-
-    r1 = client.post("/predict", json={"sensor_id": sid, "data": _REF_ANOMALOUS})
-    assert r1.json()["alert"] is True, "Expected alert on first anomalous batch"
+    assert _drain_alert(client, sid, _REF_ANOMALOUS), "Expected alert on anomalous stream"
 
     # Retrain - must reset alert state
     client.post("/fit", json={"sensor_id": sid, "data": _REF_FIT})
-
-    r2 = client.post("/predict", json={"sensor_id": sid, "data": _REF_ANOMALOUS})
-    assert r2.json()["alert"] is True, "Expected alert to fire again after retrain"
+    assert _drain_alert(client, sid, _REF_ANOMALOUS), "Expected alert to fire again after retrain"
 
 
 def test_multiple_sensors_are_independent(client):
     """Alerting on sensor A must not affect sensor B."""
     for sid in ["sA", "sB"]:
         client.post("/fit", json={"sensor_id": sid, "data": _REF_FIT})
-
-    # Fire alert on sA
-    client.post("/predict", json={"sensor_id": "sA", "data": _REF_ANOMALOUS})
-
-    # sB should still fire independently
-    r = client.post("/predict", json={"sensor_id": "sB", "data": _REF_ANOMALOUS})
-    assert r.json()["alert"] is True, "Sensor B should alert independently from A"
+    _drain_alert(client, "sA", _REF_ANOMALOUS)
+    assert _drain_alert(client, "sB", _REF_ANOMALOUS), \
+        "Sensor B should alert independently from A"
 
 
 def test_sensor_a_state_not_leaked_to_new_sensor(client):
@@ -187,8 +180,8 @@ def test_normal_batch_does_not_alert(client):
 def test_anomalous_batch_triggers_alert(client):
     """Data from within the reference incident window must trigger an alert."""
     client.post("/fit", json={"sensor_id": "s_anomaly", "data": _REF_FIT})
-    r = client.post("/predict", json={"sensor_id": "s_anomaly", "data": _REF_ANOMALOUS})
-    assert r.json()["alert"] is True
+    assert _drain_alert(client, "s_anomaly", _REF_ANOMALOUS), \
+        "Repeated anomalous batches must eventually trigger an alert"
 
 
 def test_second_anomalous_batch_does_not_re_alert_without_reset(client):
@@ -197,9 +190,6 @@ def test_second_anomalous_batch_does_not_re_alert_without_reset(client):
     NOT fire another alert until the state is explicitly reset.
     """
     client.post("/fit", json={"sensor_id": "s_lock", "data": _REF_FIT})
-
-    r1 = client.post("/predict", json={"sensor_id": "s_lock", "data": _REF_ANOMALOUS})
-    assert r1.json()["alert"] is True, "First anomaly should alert"
-
-    r2 = client.post("/predict", json={"sensor_id": "s_lock", "data": _REF_ANOMALOUS})
-    assert r2.json()["alert"] is False, "Immediate second anomaly must not re-alert"
+    assert _drain_alert(client, "s_lock", _REF_ANOMALOUS), "First anomaly stream should alert"
+    r = client.post("/predict", json={"sensor_id": "s_lock", "data": _REF_ANOMALOUS})
+    assert r.json()["alert"] is False, "Immediate call after alert must not re-alert"

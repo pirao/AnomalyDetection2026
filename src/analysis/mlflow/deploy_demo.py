@@ -13,8 +13,8 @@ dips). The labelled incident window is shaded and a red line marks the timestamp
 where the service raised an alert; the caption names the served registry version.
 
 Lives in ``analysis.mlflow`` next to the registry code it demonstrates. Run in an
-environment with the analysis/notebook stack (mlflow + matplotlib), e.g. IRV_env
-or ``uv run --extra notebooks``:
+environment with the analysis/notebook stack (mlflow + matplotlib), e.g.
+``uv run --extra notebooks``:
 
     python -m analysis.mlflow.deploy_demo --sensor 9
     python -m analysis.mlflow.deploy_demo --sensor 9 --http http://localhost:8000
@@ -151,6 +151,7 @@ def stream(sensor: int, pred: pd.DataFrame, http: str | None) -> list[pd.Timesta
         consume(call)
     else:
         from fastapi.testclient import TestClient
+
         import sample_processing.api.main as m
 
         with TestClient(m.app) as client:  # lifespan loads @production

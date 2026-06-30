@@ -235,8 +235,8 @@ def _fit_all_scenarios(
     hyperparams_path: Path,
 ) -> "dict[int, object]":
     """Fit one AnomalyModel per scenario. Returns {scenario_id: AnomalyModel}."""
-    from sample_processing.model.current.anomaly_model import AnomalyModel
     from analysis.evaluation import df_to_timeseries
+    from sample_processing.model.current.anomaly_model import AnomalyModel
 
     models: dict[int, object] = {}
     for sid in scenario_ids:

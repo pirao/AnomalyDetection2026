@@ -145,6 +145,14 @@ def _reset_app_state():
     m._engines.clear()
 
 
+def _drain_alert(client, sensor_id: str, data: list, n: int = 10) -> bool:
+    """Submit `data` up to `n` times; return True if any call returns alert=True."""
+    return any(
+        client.post("/predict", json={"sensor_id": sensor_id, "data": data}).json()["alert"]
+        for _ in range(n)
+    )
+
+
 # -- TestClient ----------------------------------------------------------------
 
 

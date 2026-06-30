@@ -27,3 +27,40 @@ def test_resolve_tracking_uri_falls_back_to_sqlite(monkeypatch):
     from sample_processing.serving import registry
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
     assert registry.resolve_tracking_uri().startswith("sqlite:///")
+
+def test_metadata_reports_runtime_fit_when_no_bundle():
+    from fastapi.testclient import TestClient
+
+    from sample_processing.api import main as m
+    m._bundle.clear()
+    m._serving_meta.clear()
+    with TestClient(m.app) as c:
+        body = c.get("/metadata").json()
+    assert body["bundle_loaded"] is False
+    assert body["model_source"] == "runtime_fit"
+    assert body["n_bundle_models"] == 0
+    for k in ("registry_alias", "registry_version", "model_fingerprint", "git_sha", "eval_f1"):
+        assert k in body
+
+
+def test_ready_returns_503_without_bundle():
+    from fastapi.testclient import TestClient
+
+    from sample_processing.api import main as m
+    m._bundle.clear()
+    with TestClient(m.app) as c:
+        r = c.get("/ready")
+    assert r.status_code == 503
+    assert r.json()["ready"] is False
+
+
+def test_metrics_endpoint_exposes_prometheus_text():
+    from fastapi.testclient import TestClient
+
+    from sample_processing.api import main as m
+    with TestClient(m.app) as c:
+        c.get("/health")
+        r = c.get("/metrics")
+    assert r.status_code == 200
+    assert "text/plain" in r.headers["content-type"]
+    assert "http_requests_total" in r.text

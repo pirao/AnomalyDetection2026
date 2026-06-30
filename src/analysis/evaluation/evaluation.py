@@ -18,7 +18,11 @@ from typing import Any, Literal
 import pandas as pd
 
 from sample_processing.model.current.alerting import AlertEngine
-from sample_processing.model.current.anomaly_model import AnomalyModel, load_alert_params, load_pipeline_params
+from sample_processing.model.current.anomaly_model import (
+    AnomalyModel,
+    load_alert_params,
+    load_pipeline_params,
+)
 from sample_processing.model.current.interface import AlertParams
 from sample_processing.model.scenario_groups import (
     GROUP_DEFINITIONS,
@@ -660,8 +664,8 @@ def diagnose_group_reassignment(
         The current group is shown as a header line, not a row.
     """
     from fastapi.testclient import TestClient
-    from sample_processing.api import main as api_main
 
+    from sample_processing.api import main as api_main
     from sample_processing.model.scenario_groups import (
         GROUP_DEFINITIONS,
         get_scenario_group_key,
@@ -777,6 +781,7 @@ def run_inference_test_evaluation(
 ) -> dict[str, Any]:
     """Run the API test replay protocol and print canonical scenario-level metrics."""
     from fastapi.testclient import TestClient
+
     from sample_processing.api import main as api_main
 
     resolved_data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR

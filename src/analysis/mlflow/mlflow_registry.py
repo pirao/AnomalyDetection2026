@@ -14,14 +14,15 @@ version (a bundle of all fitted weights + configs) is the deployable artifact.
 
 Typical use (from a notebook in the repo root)::
 
-    from analysis.mlflow.mlflow_registry import register_bundle, load_for_serving
+    from analysis.mlflow.mlflow_registry import register_bundle
+    from sample_processing.serving.registry import load_for_serving
     v = register_bundle(1, description="initial calibration", alias="production")
-    model = load_for_serving("production")          # what FastAPI would call
+    model = load_for_serving("production")          # what FastAPI calls at startup
     model.predict(batch_df)                          # batch_df has a sensor_id col
 
 View it with::
 
-    mlflow ui --backend-store-uri sqlite:///mlflow.db   # -> Models / Model registry
+    docker compose up mlflow   # -> http://localhost:5000 -> Models
 """
 import json
 from pathlib import Path
@@ -31,14 +32,11 @@ import pandas as pd
 import mlflow
 import mlflow.pyfunc
 from mlflow.models import infer_signature
-
 from sample_processing.serving.registry import (
     REGISTERED_MODEL_NAME,
     AnomalyDetectorBundle,
-    load_for_serving as load_for_serving,  # re-exported for notebooks/back-compat
+    resolve_tracking_uri,
 )
-
-from sample_processing.serving.registry import resolve_tracking_uri
 
 # This module lives at src/analysis/mlflow/mlflow_registry.py -> repo root is 3 up.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
