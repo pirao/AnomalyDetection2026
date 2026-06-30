@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "schema_version": 1,
+  "created_at": "2026-06-30T11:19:46.129387+00:00",
+  "notes": "params_path portability fix",
+  "n_sensors": 29,
+  "baseline_scaler": "standard",
+  "data_digest": "cdd2a0028e07",
+  "config_hash": "a7d454b44c3e",
+  "git_sha": "0d007fe92308",
+  "git_dirty": "True",
+  "fingerprint": "907f80bb322c",
+  "yaml_snapshot": {
+    "groups": {
+      "group_1": {
+        "alpha": 0.74,
+        "beta": 1.86,
+        "threshold_vel": 3.0,
+        "threshold_accel": 3.0,
+        "window_top_k": 6,
+        "fusion_threshold": 0.4
+      },
+      "group_2": {
+        "alpha": 0.51,
+        "beta": 6.33,
+        "threshold_vel": 4.0,
+        "threshold_accel": 4.0,
+        "window_top_k": 12,
+        "fusion_threshold": 0.4
+      },
+      "group_3": {
+        "alpha": 1.12,
+        "beta": 2.24,
+        "threshold_vel": 2.0,
+        "threshold_accel": 2.0,
+        "window_top_k": 10,
+        "fusion_threshold": 0.7
+      },
+      "group_4": {
+        "alpha": 3.35,
+        "beta": 1.75,
+        "threshold_vel": 1.0,
+        "threshold_accel": 1.0,
+        "window_top_k": 9,
+        "fusion_threshold": 0.31
+      }
+    }
+  }
+}

@@ -65,6 +65,13 @@ CMD ["uv", "run", "--no-sync", "pytest", "src/tests", "-v"]
 
 FROM base AS notebooks
 
+# Liberation Sans is metric-identical to Arial. Installing it makes
+# set_plot_style()'s Arial-first font stack resolve inside this slim image, so
+# rendered figures (e.g. the deploy_demo GIF) match the host's Arial and emit no
+# font warning. Only this stage renders figures, so the api/test images stay lean.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
 # Notebook dependencies include the analysis stack. The notebook files and
 # generated images are mounted from the host, not baked into this image.
 RUN --mount=type=cache,target=/root/.cache/uv \

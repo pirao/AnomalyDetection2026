@@ -195,7 +195,7 @@ def render(
 
     from analysis.plotting.style import set_plot_style
 
-    set_plot_style()  # repo-wide serif rcParams
+    set_plot_style()  # repo-wide Arial rcParams
 
     nf, npd = len(fit), len(pred)
     x_fit = np.arange(nf)
@@ -219,13 +219,13 @@ def render(
     frame_ends = win_ends[::step]
     frame_ends += [frame_ends[-1]] * max(1, fps * 2)  # hold on the final result
 
-    fig, axes = plt.subplots(3, 2, figsize=(14, 9), sharex=True)
+    fig, axes = plt.subplots(3, 2, figsize=(14, 9.5), sharex=True)
     fig.suptitle(
         f"Deployed anomaly detector - live stream of sensor_{sensor}",
-        fontsize=20, fontweight="bold", y=0.98,
+        fontsize=20, fontweight="bold", y=0.99,
     )
     fig.text(
-        0.5, 0.935,
+        0.5, 0.95,
         f"served by {REGISTERED_MODEL_NAME}@production ({served})  |  MLflow Registry -> FastAPI /predict  |  pre-fitted, no runtime training",
         ha="center", fontsize=12, style="italic", color="0.3",
     )
@@ -251,7 +251,7 @@ def render(
             now = ax.axvline(boundary, color="0.35", ls="--", lw=1.0)
             alines = [ax.axvline(ax_x, color="red", lw=1.6, visible=False) for ax_x in alert_x]
             if r == 0:
-                ax.set_title(col_title, fontsize=16)
+                ax.set_title(col_title, fontsize=16, pad=12)
                 ax.text(boundary, ax.get_ylim()[1], " pred ->", ha="left", va="top", fontsize=9, color="0.4")
                 ax.text(boundary, ax.get_ylim()[1], "fit ", ha="right", va="top", fontsize=9, color="0.4")
             if c == 0:
@@ -276,7 +276,7 @@ def render(
         fontsize=11, family="monospace",
         bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9),
     )
-    fig.subplots_adjust(top=0.9, bottom=0.13, hspace=0.2, wspace=0.16, left=0.08, right=0.985)
+    fig.subplots_adjust(top=0.87, bottom=0.13, hspace=0.2, wspace=0.16, left=0.08, right=0.985)
 
     def update(i):
         fe = frame_ends[i]

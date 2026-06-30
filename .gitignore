@@ -18,20 +18,11 @@ data/raw/**
 data/*.parquet
 labels/*.yaml
 
-# Local fitted-model artifacts
-cache/models/
-*.pkl
-
 # MLflow tracking outputs
-mlflow.db
-mlruns/
 mlartifacts/
 notebooks/mlruns/
 
 # Local/private assistant configuration
 .claude/
 .superpowers/
-docs/superpowers/plans/*
-docs/superpowers/specs/*
-
 docs/*
