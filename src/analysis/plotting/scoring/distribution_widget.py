@@ -1,4 +1,4 @@
-"""Group-level residual distribution widget for notebook 01.
+"""Group-level residual distribution widget for the EDA notebook (0.01).
 
 Compares fit / pred-normal / per-scenario pred-incident residual
 distributions within a single scenario group. Lets the user tune

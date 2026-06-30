@@ -10,7 +10,7 @@ Industrial machines rarely fail without warning. Their vibration sensors pick up
 
 Its job is to catch genuine faults while ignoring the harmless spikes. Every served model comes from the MLflow registry and is loaded once at startup, and `/ready` plus `/metadata` report exactly which version is live, so the service is never a black box.
 
-> This public repository ships without the private datasets or labels. The figures and the demo GIF are committed as generated reports so the results stay visible.
+> This public repository ships without the private datasets or labels. The figures, the demo GIF, and the trained MLflow registry (`mlflow.db` + `mlruns/`) are committed so the results stay visible and the service runs out of the box.
 
 ## How it works
 
@@ -72,7 +72,9 @@ AnomalyDetection2026/
 |-- notebooks/                          # exploratory data analysis and model debugging
 |-- data/raw/                           # private immutable parquet files and labels (not committed)
 |-- reports/figures/                    # generated plots, screenshots, GIFs
-|-- cache/                              # local fitted-model artifacts, ignored by Git
+|-- cache/                              # fitted-model artifacts for offline replay (committed)
+|-- mlflow.db                           # MLflow backend store: runs, model versions, @production alias
+|-- mlruns/                             # MLflow artifact store: the registered pyfunc bundle
 |
 |-- Dockerfile
 |-- compose.yaml

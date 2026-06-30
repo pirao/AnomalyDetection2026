@@ -1,4 +1,4 @@
-"""Notebook-01 calibration widget for pooled-residual sigmoid tuning.
+"""EDA-notebook calibration widget for pooled-residual sigmoid tuning.
 
 Builds histograms of per-sensor residuals near labeled windows and an
 overlayed sigmoid curve so the user can solve for alpha/beta from two
