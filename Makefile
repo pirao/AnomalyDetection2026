@@ -1,12 +1,13 @@
-.PHONY: help run stop test inference-test notebooks demo
+.PHONY: help run stop test inference-test notebooks demo demo-sensor
 
 help:
-	@echo "make run             Build and start the local API on http://localhost:8000"
-	@echo "make test            Run the fast test suite (unit, contract, performance); excludes the benchmark"
-	@echo "make inference-test  Run the private benchmark gate (test_evaluation.py); can take about 15 minutes"
-	@echo "make notebooks       Start JupyterLab on http://localhost:8888 with notebooks/cache mounted"
-	@echo "make demo            Replay a sensor through the running API and regenerate the deployment GIF"
-	@echo "make stop            Stop Compose services"
+	@echo "make run                  Build and start the local API on http://localhost:8000"
+	@echo "make test                 Run the fast test suite (unit, contract, performance); excludes the benchmark"
+	@echo "make inference-test       Run the private benchmark gate (test_evaluation.py); can take about 15 minutes"
+	@echo "make notebooks            Start JupyterLab on http://localhost:8888 with notebooks/cache mounted"
+	@echo "make demo                 Replay sensor 9 through the running API and regenerate the deployment GIF"
+	@echo "make demo-sensor SENSOR=N Replay a specific sensor (e.g. make demo-sensor SENSOR=5); requires make run"
+	@echo "make stop                 Stop Compose services"
 
 run:
 	docker compose up --build api
@@ -34,3 +35,9 @@ notebooks:
 demo:
 	docker compose run --rm --build notebooks \
 	  uv run --no-sync python -m analysis.mlflow.deploy_demo --sensor 9 --http http://api:8000
+
+# Replay any sensor: make demo-sensor SENSOR=5
+# Prerequisite: make run must be active in another terminal.
+demo-sensor:
+	docker compose run --rm --build notebooks \
+	  uv run --no-sync python -m analysis.mlflow.deploy_demo --sensor $(SENSOR) --http http://api:8000

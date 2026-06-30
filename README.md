@@ -87,7 +87,8 @@ Every workflow is a `make` target that wraps a `docker compose` command, so you 
 | `make` target | Wraps (`docker compose`) | What it does | Requires |
 |---|---|---|---|
 | `make run` | `up --build api` | Builds and starts the API + mlflow server on `localhost:8000` | `mlflow.db` + `mlruns/` present |
-| `make demo` | `run --rm --build notebooks … deploy_demo` | Replays a sensor through the **running** API and regenerates `reports/figures/mlflow/deploy_demo.gif` | `make run` active + private data |
+| `make demo` | `run --rm --build notebooks … deploy_demo` | Replays sensor 9 through the **running** API and regenerates `reports/figures/mlflow/deploy_demo.gif` | `make run` active + private data |
+| `make demo-sensor SENSOR=N` | same, with `--sensor N` | Replays any sensor (`N` = scenario id) | `make run` active + private data |
 | `make test` | `run --rm --build test` | Fast test suite: unit, contract, performance | private data for contract/performance (auto-skipped without it) |
 | `make inference-test` | `run --rm --build inference-test` | 29-scenario benchmark (~15 min); the source of the numbers in [Results](#results) | private data |
 | `make notebooks` | `up --build notebooks` | JupyterLab on `localhost:8888` with notebooks/cache mounted | — |
@@ -100,10 +101,16 @@ Every workflow is a `make` target that wraps a `docker compose` command, so you 
 
 ```bash
 make run     # terminal 1: brings up the api + mlflow services on localhost:8000
-make demo    # terminal 2: replays a sensor through the running API, writes the GIF
+make demo    # terminal 2: replays sensor 9 through the running API, writes the GIF
 ```
 
-`make demo` runs inside the `notebooks` image and reaches the API over the Compose network as `http://api:8000`, not `localhost`, which is why `make run` must be up first.
+To replay a different sensor, pass the scenario id:
+
+```bash
+make demo-sensor SENSOR=5   # replays sensor 5; any id from 1–29 is valid
+```
+
+`make demo` and `make demo-sensor` run inside the `notebooks` image and reach the API over the Compose network as `http://api:8000`, not `localhost`, which is why `make run` must be up first.
 
 ### Testing
 
