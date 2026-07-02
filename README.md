@@ -1,6 +1,6 @@
 # Industrial Sensor Anomaly Detection API
 
-[![CI](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml/badge.svg)](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml)
+<!-- [![CI](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml/badge.svg)](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml) -->
 
 > A FastAPI service that turns industrial vibration-sensor data into timely, trustworthy fault alarms.
 
