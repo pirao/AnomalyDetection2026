@@ -13,8 +13,8 @@ dips). The labelled incident window is shaded and a red line marks the timestamp
 where the service raised an alert; the caption names the served registry version.
 
 Lives in ``analysis.mlflow`` next to the registry code it demonstrates. Run in an
-environment with the analysis/notebook stack (mlflow + matplotlib), e.g. IRV_env
-or ``uv run --extra notebooks``:
+environment with the analysis/notebook stack (mlflow + matplotlib), e.g.
+``uv run --extra notebooks``:
 
     python -m analysis.mlflow.deploy_demo --sensor 9
     python -m analysis.mlflow.deploy_demo --sensor 9 --http http://localhost:8000
@@ -39,6 +39,8 @@ _SRC = _REPO / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from sample_processing.serving.registry import REGISTERED_MODEL_NAME  # noqa: E402
+
 _CANONICAL_DATA_DIR = _REPO / "data" / "raw"
 _LEGACY_DATA_DIR = _REPO / "data"
 DATA_DIR = (
@@ -55,7 +57,6 @@ LABELS_PATH = (
     else _LEGACY_LABELS_PATH
 )
 DEFAULT_OUT = _REPO / "reports" / "figures" / "mlflow" / "deploy_demo.gif"
-MODEL_NAME = "anomaly-detector-current"
 
 WINDOW = timedelta(hours=2.0)
 STRIDE = timedelta(hours=1.0)
@@ -118,7 +119,7 @@ def _served_version() -> str:
         from mlflow.tracking import MlflowClient
 
         mlflow.set_tracking_uri(f"sqlite:///{(_REPO / 'mlflow.db').as_posix()}")
-        mv = MlflowClient().get_model_version_by_alias(MODEL_NAME, "production")
+        mv = MlflowClient().get_model_version_by_alias(REGISTERED_MODEL_NAME, "production")
         return f"v{mv.version}"
     except Exception:  # noqa: BLE001 - caption is cosmetic
         return "@production"
@@ -150,6 +151,7 @@ def stream(sensor: int, pred: pd.DataFrame, http: str | None) -> list[pd.Timesta
         consume(call)
     else:
         from fastapi.testclient import TestClient
+
         import sample_processing.api.main as m
 
         with TestClient(m.app) as client:  # lifespan loads @production
@@ -187,29 +189,27 @@ def render(
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
     from matplotlib.animation import FuncAnimation, PillowWriter
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
     from analysis.plotting.style import set_plot_style
 
-    set_plot_style()  # repo-wide serif rcParams
+    set_plot_style()  # repo-wide Arial rcParams
 
     nf, npd = len(fit), len(pred)
-    x_fit = np.arange(nf)
-    x_pred = np.arange(nf, nf + npd)
-    boundary = nf
-    total = nf + npd
-    pred_ns = pd.to_datetime(pred["sampled_at"], utc=True).astype("int64").to_numpy()  # UTC ns, sorted
+    x_fit = pd.to_datetime(fit["sampled_at"], utc=True)
+    x_pred = pd.to_datetime(pred["sampled_at"], utc=True)
+    boundary = x_fit.iloc[-1]
+    pred_ns = x_pred.astype("int64").to_numpy()  # UTC ns for searchsorted in animation
 
     def _ns(ts) -> int:
         return pd.to_datetime(ts, utc=True).value
 
-    def to_pred_x(ts) -> int:
-        return boundary + int(np.searchsorted(pred_ns, _ns(ts)))
-
-    inc_spans = [(to_pred_x(s), to_pred_x(e)) for s, e in incidents]
-    alert_x = [to_pred_x(a) for a in alerts]
+    inc_spans = list(incidents)  # already (Timestamp, Timestamp) tuples
+    alert_x = list(alerts)       # already Timestamps
+    pred_start = x_pred.iloc[0]  # first pred timestamp; gap = [boundary, pred_start]
 
     # Subsample window-ends to keep the GIF short; reveal still shows all data so far.
     win_ends = [we for we, _ in _windows(pred)]
@@ -217,14 +217,14 @@ def render(
     frame_ends = win_ends[::step]
     frame_ends += [frame_ends[-1]] * max(1, fps * 2)  # hold on the final result
 
-    fig, axes = plt.subplots(3, 2, figsize=(14, 9), sharex=True)
+    fig, axes = plt.subplots(3, 2, figsize=(14, 9.5), sharex=True)
     fig.suptitle(
         f"Deployed anomaly detector - live stream of sensor_{sensor}",
-        fontsize=20, fontweight="bold", y=0.98,
+        fontsize=20, fontweight="bold", y=0.99,
     )
     fig.text(
-        0.5, 0.935,
-        f"served by {MODEL_NAME}@production ({served})  |  MLflow Registry -> FastAPI /predict  |  pre-fitted, no runtime training",
+        0.5, 0.92,
+        f"served by {REGISTERED_MODEL_NAME}@production ({served})  |  MLflow Registry -> FastAPI /predict  |  pre-fitted, no runtime training",
         ha="center", fontsize=12, style="italic", color="0.3",
     )
 
@@ -235,7 +235,7 @@ def render(
             col = f"{prefix}_{comp}"
             fit_vals = fit[col].to_numpy()
             pred_vals = pred[col].to_numpy()
-            ax.set_xlim(0, total)
+            ax.set_xlim(x_fit.iloc[0], x_pred.iloc[-1])
             both = np.concatenate([fit_vals, pred_vals])
             lo, hi = float(np.nanmin(both)), float(np.nanmax(both))
             pad = (hi - lo) * 0.1 or 1.0
@@ -244,20 +244,41 @@ def render(
             for i0, i1 in inc_spans:
                 ax.axvspan(i0, i1, color="orange", alpha=0.18, zorder=0)
             ax.axvline(boundary, color="0.5", ls=":", lw=1.2)  # fit | pred divider
+            if pred_start > boundary:
+                ax.axvspan(boundary, pred_start, color="0.92", alpha=1.0, zorder=0)
             ax.plot(x_fit, fit_vals, color="0.6", lw=0.7)       # fit context (static)
             (pred_line,) = ax.plot([], [], color="tab:blue" if c == 0 else "tab:green", lw=0.8)
             now = ax.axvline(boundary, color="0.35", ls="--", lw=1.0)
             alines = [ax.axvline(ax_x, color="red", lw=1.6, visible=False) for ax_x in alert_x]
             if r == 0:
-                ax.set_title(col_title, fontsize=16)
-                ax.text(boundary, ax.get_ylim()[1], " pred ->", ha="left", va="top", fontsize=9, color="0.4")
-                ax.text(boundary, ax.get_ylim()[1], "fit ", ha="right", va="top", fontsize=9, color="0.4")
+                ax.set_title(col_title, fontsize=16, pad=12)
+                y_lo, y_hi = ax.get_ylim()
+                y_label = y_hi - (y_hi - y_lo) * 0.08
+                x_offset = (x_pred.iloc[-1] - x_fit.iloc[0]) * 0.06
+                ax.annotate(
+                    "pred",
+                    xy=(boundary, y_label),
+                    xytext=(boundary + x_offset, y_label),
+                    ha="left", va="center", fontsize=13, color="0.4",
+                    arrowprops=dict(arrowstyle="->", color="0.4", lw=1.5, shrinkB=0),
+                )
+                ax.text(boundary, y_label, "fit  ", ha="right", va="center", fontsize=13, color="0.4")
+                if pred_start > boundary:
+                    gap_mid = boundary + (pred_start - boundary) / 2
+                    ax.text(
+                        gap_mid, y_hi - (y_hi - y_lo) * 0.04,
+                        "no data", ha="center", va="top",
+                        fontsize=9, color="0.5", style="italic",
+                    )
             if c == 0:
                 ax.set_ylabel(comp.upper(), fontsize=18, rotation=0, labelpad=18, va="center")
             panels.append((pred_vals, pred_line, now, alines))
 
     for c in range(2):
-        axes[2][c].set_xlabel("sample index  (fit | pred - no masking: uptime + downtime)", fontsize=12)
+        axes[2][c].set_xlabel("timestamp  (fit | pred — no masking: uptime + downtime)", fontsize=12)
+        loc = mdates.AutoDateLocator()
+        axes[2][c].xaxis.set_major_locator(loc)
+        axes[2][c].xaxis.set_major_formatter(mdates.ConciseDateFormatter(loc))
 
     legend_handles = [
         Line2D([], [], color="0.6", lw=1.2, label="fit (training)"),
@@ -265,8 +286,9 @@ def render(
         Line2D([], [], color="tab:green", lw=1.4, label="acceleration (pred)"),
         Patch(facecolor="orange", alpha=0.25, label="labelled incident"),
         Line2D([], [], color="red", lw=1.6, label="alert raised by API"),
+        Patch(facecolor="0.92", label="no data (train/deploy gap)"),
     ]
-    fig.legend(handles=legend_handles, loc="lower center", ncol=5, fontsize=12,
+    fig.legend(handles=legend_handles, loc="lower center", ncol=6, fontsize=12,
                bbox_to_anchor=(0.5, 0.012), framealpha=0.95)
 
     status = axes[0][1].text(
@@ -274,14 +296,14 @@ def render(
         fontsize=11, family="monospace",
         bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9),
     )
-    fig.subplots_adjust(top=0.9, bottom=0.13, hspace=0.2, wspace=0.16, left=0.08, right=0.985)
+    fig.subplots_adjust(top=0.85, bottom=0.13, hspace=0.2, wspace=0.16, left=0.08, right=0.985)
 
     def update(i):
         fe = frame_ends[i]
         cnt = int(np.searchsorted(pred_ns, _ns(fe), side="right"))
-        pos = boundary + cnt
+        pos = x_pred.iloc[cnt - 1] if cnt > 0 else boundary
         for pred_vals, line, now, alines in panels:
-            line.set_data(x_pred[:cnt], pred_vals[:cnt])
+            line.set_data(x_pred.iloc[:cnt], pred_vals[:cnt])
             now.set_xdata([pos, pos])
             for ax_x, al in zip(alert_x, alines):
                 al.set_visible(pos >= ax_x)
@@ -310,7 +332,7 @@ def main() -> None:
     fit, pred, incidents = _load(args.sensor)
     served = _served_version()
     print(f"streaming sensor_{args.sensor} through {'HTTP ' + args.http if args.http else 'in-process app'} "
-          f"(serving {MODEL_NAME}@production {served}) ...")
+          f"(serving {REGISTERED_MODEL_NAME}@production {served}) ...")
     alerts = stream(args.sensor, pred, args.http)
     print(f"  windows alerted: {len(alerts)} -> {[str(a) for a in alerts]}")
     in_window = [a for a in alerts if any(s <= a <= e for s, e in incidents)]

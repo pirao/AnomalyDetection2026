@@ -6,10 +6,10 @@ selected scenarios with split boundaries and incident overlays.
 Consumer: ``notebooks/0.01-acp-exploratory-data-analysis.ipynb`` (``create_rms_scenario_widget``).
 """
 
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import ipywidgets as widgets
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import pandas as pd
 from IPython.display import clear_output
 
 _LINE_COLOR     = "#1f77b4"

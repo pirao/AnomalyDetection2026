@@ -1,4 +1,12 @@
-"""FastAPI service exposing per-sensor fit and predict endpoints.
+"""FastAPI service for per-sensor anomaly fitting, scoring, and serving observability.
+
+Endpoints:
+  - ``POST /fit`` / ``POST /predict`` - train and score per-sensor models.
+  - ``GET /health``   - liveness; the process is up. Frozen contract ``{"status": "ok"}``.
+  - ``GET /ready``    - readiness; 200 only when the registry bundle is loaded, else 503.
+  - ``GET /metadata`` - which model is serving and its provenance (registry version,
+    fingerprint, git sha, eval F1), read from in-memory startup state.
+  - ``GET /metrics``  - Prometheus exposition (request count + latency histogram).
 
 Serving sources, in priority order:
   1. ``_models``  - runtime-fit models keyed by the raw ``sensor_id`` string,
@@ -6,20 +14,23 @@ Serving sources, in priority order:
   2. ``_bundle``  - the registered pre-fitted bundle keyed by int ``scenario_id``,
      loaded from the MLflow registry ``@production`` alias at startup.
 
-The registry client (``mlflow``) and the offline ``analysis`` package are NOT
-runtime dependencies of the lean service/image, so the bundle load is best-effort:
-when unavailable (lean Docker image, test container, no ``@production`` alias) the
-service degrades silently to runtime-fit serving via ``/fit``.
+The ``analysis`` package is NOT a runtime dependency of the lean service/image.
+``mlflow`` IS a runtime dep (registry client); the bundle load is still best-effort:
+when the registry server is unreachable or has no ``@production`` alias the service
+degrades to runtime-fit serving via ``/fit`` - but that degradation is now *reported*
+(``/ready`` returns 503, ``/metadata`` shows ``bundle_loaded: false``), never silent.
 """
 
 from __future__ import annotations
 
 import logging
-import re
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 
 from sample_processing.model.current.alerting import AlertEngine
@@ -37,6 +48,22 @@ REGISTRY_ALIAS = "production"
 _models: dict[str, AnomalyModel] = {}   # runtime-fit, keyed by sensor_id (priority)
 _bundle: dict[int, AnomalyModel] = {}   # registry bundle, keyed by scenario_id
 _engines: dict[str, AlertEngine] = {}   # stateful alerting, keyed by sensor_id
+_serving_meta: dict = {}
+
+# -- Prometheus metrics (module scope: registered once, never per request) -----
+# The Counter is named ``http_requests`` because prometheus-client appends the
+# ``_total`` suffix automatically, yielding the conventional ``http_requests_total``
+# series in the exposition.
+REQUEST_COUNT = Counter(
+    "http_requests",
+    "Total HTTP requests processed, labelled by method, endpoint and status.",
+    ["method", "endpoint", "status"],
+)
+REQUEST_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency in seconds, labelled by endpoint.",
+    ["endpoint"],
+)
 
 
 def _load_registry_bundle() -> None:
@@ -46,15 +73,15 @@ def _load_registry_bundle() -> None:
     the lean container starts) even when neither is installed. Any failure is
     logged and swallowed, leaving ``_bundle`` empty (runtime-fit only).
     """
-    if _bundle:  # already loaded in this process
+    if _bundle:
         return
     try:
-        from analysis.mlflow.mlflow_registry import load_for_serving
-
-        wrapper = load_for_serving(REGISTRY_ALIAS)
+        from sample_processing.serving.registry import load_for_serving_with_metadata
+        wrapper, meta = load_for_serving_with_metadata(REGISTRY_ALIAS)
         _bundle.update(wrapper.unwrap_python_model()._models)
+        _serving_meta.update(meta)
         _logger.info("Loaded %d models from registry @%s", len(_bundle), REGISTRY_ALIAS)
-    except Exception as exc:  # noqa: BLE001 - degrade gracefully on any failure
+    except Exception as exc:  # noqa: BLE001
         _logger.warning(
             "Registry bundle unavailable (%s); serving runtime-fit models only.", exc
         )
@@ -67,6 +94,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Industrial Sensor Anomaly Detection API", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def _record_request_metrics(request: Request, call_next):
+    """Time and count every request for Prometheus, labelled by route + status."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - start
+    endpoint = request.url.path
+    REQUEST_LATENCY.labels(endpoint=endpoint).observe(elapsed)
+    REQUEST_COUNT.labels(
+        method=request.method, endpoint=endpoint, status=response.status_code
+    ).inc()
+    return response
 
 
 # -- Contracts (do not change) -------------------------------------------------
@@ -138,13 +179,8 @@ def _to_timeseries(points: list[DataPoint]) -> TimeSeries:
 
 
 def _scenario_id_from_sensor_id(sensor_id: str) -> int | None:
-    match = re.fullmatch(r"(?:sensor|analysis_sensor)_(\d+)", sensor_id.strip())
-    if match is None:
-        return None
-    try:
-        return int(match.group(1))
-    except ValueError:
-        return None
+    from sample_processing.model.scenario_groups import scenario_id_from_sensor_id
+    return scenario_id_from_sensor_id(sensor_id)
 
 
 # -- Endpoints -----------------------------------------------------------------
@@ -203,3 +239,42 @@ def predict(req: PredictRequest):
 def health():
     """Return service health for orchestration and contract tests."""
     return {"status": "ok"}
+
+
+@app.get("/metadata")
+def metadata():
+    """Report which model version is currently serving."""
+    return {
+        "model_source": "registry" if _bundle else "runtime_fit",
+        "registry_alias": REGISTRY_ALIAS,
+        "bundle_loaded": bool(_bundle),
+        "registry_version": _serving_meta.get("registry_version"),
+        "n_bundle_models": len(_bundle),
+        "n_runtime_models": len(_models),
+        "model_fingerprint": _serving_meta.get("model_fingerprint"),
+        "git_sha": _serving_meta.get("git_sha"),
+        "eval_f1": _serving_meta.get("eval_f1"),
+    }
+
+
+@app.get("/ready")
+def ready():
+    """Readiness probe: 200 only when the registry bundle is loaded.
+
+    Distinct from ``/health`` (liveness). A process that started but could not
+    load the ``@production`` bundle is *alive* yet *not ready* to serve the
+    registered model, so an orchestrator should hold it out of traffic rotation
+    (503) rather than restart it.
+    """
+    if _bundle:
+        return {"ready": True}
+    return JSONResponse(
+        status_code=503,
+        content={"ready": False, "reason": "registry bundle not loaded"},
+    )
+
+
+@app.get("/metrics")
+def metrics():
+    """Expose request counters and latency histograms in Prometheus text format."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

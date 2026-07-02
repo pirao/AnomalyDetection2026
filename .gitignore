@@ -7,7 +7,7 @@ __pycache__/
 METRICS.md
 pytest-cache-files-*/
 
-# Private benchmark inputs (canonical CCDS layout)
+# Private benchmark inputs
 data/raw/**
 !data/raw/
 !data/raw/README.md
@@ -18,20 +18,11 @@ data/raw/**
 data/*.parquet
 labels/*.yaml
 
-# Local fitted-model artifacts
-cache/models/
-*.pkl
-
 # MLflow tracking outputs
-mlflow.db
-mlruns/
 mlartifacts/
 notebooks/mlruns/
 
 # Local/private assistant configuration
 .claude/
 .superpowers/
-docs/mle-deployment-study-log.md
-docs/mle-deployment-study-plan.md
-docs/superpowers/plans/2026-06-27-ci-cd-github-actions.md
-docs/superpowers/specs/2026-06-27-ci-cd-github-actions-design.md
+docs/*

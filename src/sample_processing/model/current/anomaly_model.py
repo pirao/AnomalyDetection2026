@@ -88,7 +88,10 @@ class AnomalyModel:
     ):
         self.weights = Weights()
         resolved_params_path = params_path or DEFAULT_PARAMS_PATH
-        self.params_path = resolved_params_path
+        # Stored as a string, not a Path: a fitted model is pickled and may be
+        # unpickled on a different OS (fitted on Windows, served in a Linux
+        # container). A pickled WindowsPath cannot be reconstructed on POSIX.
+        self.params_path = str(resolved_params_path)
         self.params = load_model_params(
             resolved_params_path,
             scenario_id=scenario_id,

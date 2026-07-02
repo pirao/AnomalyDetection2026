@@ -7,7 +7,7 @@ service supports:
 - **time batches**  - fixed-duration half-open windows anchored at the first
   prediction timestamp with ``stride = window - overlap`` (matches the live
   ``/predict`` rule and ``src/tests/test_evaluation.py``).
-- **row batches**   - fixed-row slices used by ``generate_report.py`` for
+- **row batches**   - fixed-row slices used by ``simulation`` (``row`` mode) for
   quick local replays over a compact number of predictions.
 """
 
@@ -124,7 +124,7 @@ def iter_row_batches(
     batch_size: int = 50,
     time_col: str = "sampled_at",
 ):
-    """Yield fixed-row batches like ``generate_report.py``.
+    """Yield fixed-row batches for ``simulation``'s ``row`` replay mode.
 
     Each yielded batch corresponds to a single submitted predict payload over a
     contiguous row slice. The plotting span uses the first timestamp as the

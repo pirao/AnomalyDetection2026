@@ -28,7 +28,7 @@ jobs:
         run: uv run ruff check src/sample_processing src/tests
 
       - name: Unit tests
-        run: uv run pytest src/tests/test_model.py -v
+        run: uv run pytest src/tests/test_model.py src/tests/test_serving.py -v
 
   build-and-push:
     name: Build and push API image

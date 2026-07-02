@@ -9,23 +9,65 @@ services:
       target: api
     ports:
       - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      mlflow:
+        condition: service_healthy
 
-  # make test - Dockerized pytest helper.
+  # MLflow tracking server — registry UI + HTTP client endpoint for the api service.
+  # Mounts the existing mlflow.db and mlruns/ from the host so the server sees all
+  # registered models without any re-import step.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.13.0
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///app/mlflow.db
+      --artifacts-destination /app/mlruns
+      --serve-artifacts
+      --host 0.0.0.0
+      --port 5000
+    environment:
+      # Let the api container (Host: mlflow:5000) and local browser access pass
+      # MLflow 3's DNS-rebinding host check. Setting this REPLACES the built-in
+      # localhost defaults, so localhost/127.0.0.1 must be listed explicitly.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:5000,127.0.0.1:5000"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+    healthcheck:
+      # The mlflow image ships no curl; use the Python runtime it already has.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/health').getcode()==200 else 1)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # make test - fast Dockerized test suite (unit, contract, performance).
   # Builds the Dockerfile `test` target and mounts private benchmark inputs
-  # read-only at runtime instead of baking them into an image layer.
+  # read-only at runtime instead of baking them into an image layer. Excludes
+  # the slow benchmark (test_evaluation.py) so this stays quick; that file is
+  # run on its own by `make inference-test`.
   test:
     build:
       context: .
       target: test
-    command: uv run --no-sync pytest src/tests -v
+    command: uv run --no-sync pytest src/tests --ignore=src/tests/test_evaluation.py -v
     volumes:
       - ./data:/app/data:ro
     profiles:
       - test
 
   # make inference-test - private benchmark gate and source of reported metrics.
-  # Uses the same `test` target as `make test`, but runs only the benchmark file.
-  # It can take around 15 minutes, so it is kept behind an explicit profile.
+  # Uses the same `test` image target, but runs only the benchmark file that
+  # `make test` excludes. It can take around 15 minutes, so it is kept behind an
+  # explicit profile.
   inference-test:
     build:
       context: .

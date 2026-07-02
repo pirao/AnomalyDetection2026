@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-
 _VEL_COLS = ["vel_rms_x", "vel_rms_y", "vel_rms_z"]
 _ACCEL_COLS = ["accel_rms_x", "accel_rms_y", "accel_rms_z"]
 

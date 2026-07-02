@@ -1,0 +1,1 @@
+{"columns": ["sensor_id", "timestamp", "uptime", "vel_rms_x", "vel_rms_y", "vel_rms_z", "accel_rms_x", "accel_rms_y", "accel_rms_z"], "data": [["sensor_1", "2024-01-01T00:00:00+00:00", true, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]}

@@ -6,11 +6,11 @@ exploring a single scenario end-to-end.
 Consumer: ``notebooks/0.01-acp-exploratory-data-analysis.ipynb`` (``create_scenario_inspector``).
 """
 
+import ipywidgets as widgets
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import ipywidgets as widgets
 from IPython.display import clear_output
 
 _FEATURES = [

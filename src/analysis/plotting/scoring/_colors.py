@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 _D_VEL_COLOR = "#1f77b4"
 _D_ACCEL_COLOR = "#ff7f0e"
 _THRESH_COLOR = "#d62728"
