@@ -22,6 +22,9 @@ labels/*.yaml
 mlartifacts/
 notebooks/mlruns/
 
+# Local environment configuration (compose sets MLFLOW_TRACKING_URI itself)
+.env
+
 # Local/private assistant configuration
 .claude/
 .superpowers/

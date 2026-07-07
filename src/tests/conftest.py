@@ -13,18 +13,13 @@ from sample_processing.model.current.anomaly_model import load_pipeline_params
 # -- Paths ---------------------------------------------------------------------
 
 _BASE = Path(__file__).parent.parent.parent
-_CANONICAL_DATA_DIR = _BASE / "data" / "raw"
-DATA_DIR = (_CANONICAL_DATA_DIR
-    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
-    else print("Warning: no data found in path")
-)
-
-_CANONICAL_LABELS_PATH = _BASE / "data" / "raw" / "labels" / "incidents.yaml"
-LABELS_PATH = (
-_CANONICAL_LABELS_PATH
-    if _CANONICAL_LABELS_PATH.exists()
-    else print("Warning: no data found in path")
-)
+# These stay plain Path constants whether or not the private data is present; the
+# DATA_AVAILABLE check below is the single gate that decides if data-dependent tests
+# run. Assigning None here (e.g. via an `else print(...)` branch) would break the
+# module-level `.glob`/`.exists()` calls and abort conftest import on a data-less CI
+# runner with pytest exit code 4.
+DATA_DIR = _BASE / "data" / "raw"
+LABELS_PATH = DATA_DIR / "labels" / "incidents.yaml"
 
 # -- Data availability ---------------------------------------------------------
 #

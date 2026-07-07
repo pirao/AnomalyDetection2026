@@ -252,18 +252,10 @@ def render(
             alines = [ax.axvline(ax_x, color="red", lw=1.6, visible=False) for ax_x in alert_x]
             if r == 0:
                 ax.set_title(col_title, fontsize=16, pad=12)
-                y_lo, y_hi = ax.get_ylim()
-                y_label = y_hi - (y_hi - y_lo) * 0.08
-                x_offset = (x_pred.iloc[-1] - x_fit.iloc[0]) * 0.06
-                ax.annotate(
-                    "pred",
-                    xy=(boundary, y_label),
-                    xytext=(boundary + x_offset, y_label),
-                    ha="left", va="center", fontsize=13, color="0.4",
-                    arrowprops=dict(arrowstyle="->", color="0.4", lw=1.5, shrinkB=0),
-                )
-                ax.text(boundary, y_label, "fit  ", ha="right", va="center", fontsize=13, color="0.4")
+                # The fit|pred divider and the "now" cursor are explained in the legend,
+                # so the only text left inside the grey span is the "no data" marker.
                 if pred_start > boundary:
+                    y_lo, y_hi = ax.get_ylim()
                     gap_mid = boundary + (pred_start - boundary) / 2
                     ax.text(
                         gap_mid, y_hi - (y_hi - y_lo) * 0.04,
@@ -275,7 +267,7 @@ def render(
             panels.append((pred_vals, pred_line, now, alines))
 
     for c in range(2):
-        axes[2][c].set_xlabel("timestamp  (fit | pred — no masking: uptime + downtime)", fontsize=12)
+        axes[2][c].set_xlabel("timestamp", fontsize=12)
         loc = mdates.AutoDateLocator()
         axes[2][c].xaxis.set_major_locator(loc)
         axes[2][c].xaxis.set_major_formatter(mdates.ConciseDateFormatter(loc))
@@ -284,19 +276,21 @@ def render(
         Line2D([], [], color="0.6", lw=1.2, label="fit (training)"),
         Line2D([], [], color="tab:blue", lw=1.4, label="velocity (pred)"),
         Line2D([], [], color="tab:green", lw=1.4, label="acceleration (pred)"),
+        Line2D([], [], color="0.5", ls=":", lw=1.2, label="fit | pred divider"),
+        Line2D([], [], color="0.35", ls="--", lw=1.0, label="now — current stream position"),
+        Patch(facecolor="0.92", label="no data (train/deploy gap)"),
         Patch(facecolor="orange", alpha=0.25, label="labelled incident"),
         Line2D([], [], color="red", lw=1.6, label="alert raised by API"),
-        Patch(facecolor="0.92", label="no data (train/deploy gap)"),
     ]
-    fig.legend(handles=legend_handles, loc="lower center", ncol=6, fontsize=12,
-               bbox_to_anchor=(0.5, 0.012), framealpha=0.95)
+    fig.legend(handles=legend_handles, loc="lower center", ncol=4, fontsize=11,
+               bbox_to_anchor=(0.5, 0.008), framealpha=0.95)
 
     status = axes[0][1].text(
         0.985, 0.95, "", transform=axes[0][1].transAxes, ha="right", va="top",
         fontsize=11, family="monospace",
         bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9),
     )
-    fig.subplots_adjust(top=0.85, bottom=0.13, hspace=0.2, wspace=0.16, left=0.08, right=0.985)
+    fig.subplots_adjust(top=0.85, bottom=0.17, hspace=0.2, wspace=0.16, left=0.08, right=0.985)
 
     def update(i):
         fe = frame_ends[i]

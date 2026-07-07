@@ -1,8 +1,17 @@
 # Industrial Sensor Anomaly Detection API
 
-<!-- [![CI](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml/badge.svg)](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml) -->
+[![CI](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml/badge.svg)](https://github.com/pirao/AnomalyDetection2026/actions/workflows/ci.yml)
 
 > A FastAPI service that turns industrial vibration-sensor data into timely, trustworthy fault alarms.
+
+## Contents
+
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Repository structure](#repository-structure)
+- [Quick start](#quick-start)
+- [Results](#results)
+- [Model lifecycle and serving](#model-lifecycle-and-serving)
 
 ## What it does
 
@@ -37,7 +46,7 @@ The detector is deliberately small, so every alarm can be traced to a cause. It 
 
 3. **Decide whether to alarm.** The raw score stream is noisy, so the engine waits for a deviation to repeat across several windows before firing, then stays quiet through a cooldown. One fault yields one alarm instead of a burst.
 
-   The diagram below shows how the three escalation levels interact: a single channel feeds into a group-3 pattern (same modality), which feeds into group-6 (full cross-modal). Group-6 is implemented but disabled by default — group-3 already catches every incident within the current dataset's window lengths.
+   The diagram below shows how the three escalation levels interact: a single channel feeds into a group-3 pattern (same modality), which feeds into group-6 (full cross-modal). These form an ownership ladder — single-channel (priority 0) < group-3 (1) < group-6 (2) — where a confirmed higher-priority owner suppresses lower-priority re-alarms until it resets. A single channel confirms on a 3-of-4 window gate and a group on a 2-of-3 gate. Group-6 is implemented but disabled by default — group-3 already catches every incident within the current dataset's window lengths.
 
    ![Alert hierarchy](reports/figures/alert_hierarchy/alert-hierarchy-demo.svg)
 
@@ -61,26 +70,42 @@ The current model replaces a single global detector with per-group residual scor
 ```text
 AnomalyDetection2026/
 |-- src/
-|   |-- sample_processing/              # deployable service package
-|   |   |-- api/                        # FastAPI: /fit, /predict, /health, /ready, /metadata, /metrics
-|   |   |-- serving/                    # registry bundle + @production loader
-|   |   `-- model/                      # baseline/current detectors and alert engines
+|   |-- sample_processing/              # deployable service package (only code in the api image)
+|   |   |-- api/main.py                 # FastAPI: /fit, /predict, /health, /ready, /metadata, /metrics
+|   |   |-- serving/registry.py         # AnomalyDetectorBundle pyfunc + @production loader
+|   |   `-- model/
+|   |       |-- scenario_groups.py      # scenario_id -> group mapping
+|   |       |-- shared/                 # windowing/pipeline hyperparameters (all models)
+|   |       |-- baseline/               # global velocity-norm z-score detector + simple lock
+|   |       `-- current/                # shipped detector: per-group residual scoring
+|   |           |-- anomaly_model.py sensor_model.py normalization.py preprocessing.py
+|   |           |-- interface.py        # Pydantic request/response contracts
+|   |           |-- alerting/           # stateful engine.py, group_logic.py, priority_queue.py
+|   |           `-- hyperparameters/    # alert_hyperparams.yaml + norm params
 |   |
-|   |-- analysis/                       # offline-only evaluation, MLflow, plotting helpers
-|   `-- tests/                          # contract, model, evaluation, performance tests
+|   |-- analysis/                       # offline-only tooling (not shipped in the api image)
+|   |   |-- evaluation/                 # 29-scenario benchmark orchestration + per-event metrics
+|   |   |-- mlflow/                     # experiment logging, registry promote, deploy_demo.py (GIF)
+|   |   `-- plotting/                   # EDA + scoring widgets (eda/, scoring/), shared style
+|   `-- tests/                          # conftest + contract, model, serving, performance, evaluation
 |
-|-- notebooks/                          # exploratory data analysis and model debugging
-|-- data/raw/                           # private immutable parquet files and labels (not committed)
-|-- reports/figures/                    # generated plots, screenshots, GIFs
-|-- cache/                              # fitted-model artifacts for offline replay (committed)
+|-- notebooks/                          # EDA (0.01) and model-debugging (1.01) notebooks
+|-- data/                               # staging: README, manifest.json, raw/ (parquet + labels not committed)
+|-- cache/models/v1/                    # committed per-sensor fits 1.pkl..29.pkl for offline replay
+|-- reports/figures/                    # alert_hierarchy/, mlflow/ (deploy_demo.gif), widget_exports/
 |-- mlflow.db                           # MLflow backend store: runs, model versions, @production alias
 |-- mlruns/                             # MLflow artifact store: the registered pyfunc bundle
 |
-|-- Dockerfile
-|-- compose.yaml
-|-- Makefile
-`-- pyproject.toml
+|-- .github/workflows/ci.yml            # CI: ruff lint + unit tests; build/push api image to GHCR
+|-- Dockerfile                          # multi-stage build: base -> api / test / notebooks
+|-- compose.yaml                        # services: api, mlflow, test, inference-test, notebooks
+|-- Makefile                            # run/demo/test/inference-test/notebooks targets
+|-- pyproject.toml                      # project=sample_processing; deps, ruff + pytest config
+`-- uv.lock                             # uv lockfile
 ```
+
+Private benchmark data (parquet + `incidents.yaml`) is git-ignored; restore it as described in
+[data/raw/README.md](data/raw/README.md) before running the demo, tests, or notebooks.
 
 ## Quick start
 
@@ -89,8 +114,8 @@ Every workflow is a `make` target that wraps a `docker compose` command, so you 
 | `make` target | Wraps (`docker compose`) | What it does | Requires |
 |---|---|---|---|
 | `make run` | `up --build api` | Builds and starts the API + mlflow server on `localhost:8000` | `mlflow.db` + `mlruns/` present |
-| `make demo` | `run --rm --build notebooks … deploy_demo` | Replays sensor 9 through the **running** API and regenerates `reports/figures/mlflow/deploy_demo.gif` | `make run` active + private data |
-| `make demo-sensor SENSOR=N` | same, with `--sensor N` | Replays any sensor (`N` = scenario id) | `make run` active + private data |
+| `make demo` | `up -d --wait api` + `run --rm notebooks … deploy_demo` | Starts the API (if needed), replays sensor 9, and regenerates `reports/figures/mlflow/deploy_demo.gif` | private data |
+| `make demo-sensor SENSOR=N` | same, with `--sensor N` | Starts the API (if needed) and replays any sensor (`N` = scenario id) | private data |
 | `make test` | `run --rm --build test` | Fast test suite: unit, contract, performance | private data for contract/performance (auto-skipped without it) |
 | `make inference-test` | `run --rm --build inference-test` | 29-scenario benchmark (~15 min); the source of the numbers in [Results](#results) | private data |
 | `make notebooks` | `up --build notebooks` | JupyterLab on `localhost:8888` with notebooks/cache mounted | — |
@@ -99,11 +124,11 @@ Every workflow is a `make` target that wraps a `docker compose` command, so you 
 
 ### Run the deployment
 
-`make run` and `make demo` are the deployment path. Start the service first, then drive it:
+`make demo` is the deployment path in a single command — it starts the API (and mlflow) if
+they are not already up, waits until the `@production` bundle is loaded, then replays the sensor:
 
 ```bash
-make run     # terminal 1: brings up the api + mlflow services on localhost:8000
-make demo    # terminal 2: replays sensor 9 through the running API, writes the GIF
+make demo    # brings up api + mlflow, waits until ready, replays sensor 9, writes the GIF
 ```
 
 To replay a different sensor, pass the scenario id:
@@ -112,7 +137,10 @@ To replay a different sensor, pass the scenario id:
 make demo-sensor SENSOR=5   # replays sensor 5; any id from 1–29 is valid
 ```
 
-`make demo` and `make demo-sensor` run inside the `notebooks` image and reach the API over the Compose network as `http://api:8000`, not `localhost`, which is why `make run` must be up first.
+The demo runs inside the `notebooks` image and reaches the API over the Compose network as
+`http://api:8000`. The API and mlflow stay running afterward (inspect them on `localhost:8000`
+/ `localhost:5000`); run `make stop` to tear everything down. To bring up just the API on its
+own, `make run` still works.
 
 ### Testing
 

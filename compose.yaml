@@ -14,6 +14,20 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
+    healthcheck:
+      # "healthy" means the @production bundle has loaded and /predict will succeed,
+      # so `docker compose up --wait api` (used by `make demo`) blocks until the API
+      # can actually serve. Uses the image's own python; /ready returns 503 until the
+      # bundle is resolved, which urlopen surfaces as a non-zero exit (unhealthy).
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/ready').getcode()==200 else 1)
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
 
   # MLflow tracking server — registry UI + HTTP client endpoint for the api service.
   # Mounts the existing mlflow.db and mlruns/ from the host so the server sees all

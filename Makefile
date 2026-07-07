@@ -5,8 +5,8 @@ help:
 	@echo "make test                 Run the fast test suite (unit, contract, performance); excludes the benchmark"
 	@echo "make inference-test       Run the private benchmark gate (test_evaluation.py); can take about 15 minutes"
 	@echo "make notebooks            Start JupyterLab on http://localhost:8888 with notebooks/cache mounted"
-	@echo "make demo                 Replay sensor 9 through the running API and regenerate the deployment GIF"
-	@echo "make demo-sensor SENSOR=N Replay a specific sensor (e.g. make demo-sensor SENSOR=5); requires make run"
+	@echo "make demo                 Start the API (if needed) and replay sensor 9 to regenerate the deployment GIF"
+	@echo "make demo-sensor SENSOR=N Start the API (if needed) and replay a specific sensor (e.g. make demo-sensor SENSOR=5)"
 	@echo "make stop                 Stop Compose services"
 
 run:
@@ -24,20 +24,20 @@ inference-test:
 notebooks:
 	docker compose up --build notebooks
 
-# Replays sensor 9's pred split through the running API's POST /predict, then
-# renders reports/figures/mlflow/deploy_demo.gif. Runs inside the `notebooks`
-# image (matplotlib + analysis stack, PYTHONPATH=/app/src already set) so it does
-# not depend on the host Python environment. Reaches the API over the Compose
-# network as http://api:8000 and writes the GIF to the mounted ./reports volume.
-#
-# Prerequisite: start the API first in another terminal with `make run` (it brings
-# up the api + mlflow services this target connects to).
+# Replays sensor 9's pred split through the API's POST /predict, then renders
+# reports/figures/mlflow/deploy_demo.gif. Self-contained: `up -d --wait api` starts
+# the api + mlflow services and blocks until the API is healthy (the @production
+# bundle is loaded), so no separate `make run` terminal is needed. The stream runs
+# inside the `notebooks` image (matplotlib + analysis stack, PYTHONPATH=/app/src set),
+# reaches the API over the Compose network as http://api:8000, and writes the GIF to
+# the mounted ./reports volume. Services stay up afterward; run `make stop` to tear down.
 demo:
+	docker compose up -d --build --wait api
 	docker compose run --rm --build notebooks \
 	  uv run --no-sync python -m analysis.mlflow.deploy_demo --sensor 9 --http http://api:8000
 
-# Replay any sensor: make demo-sensor SENSOR=5
-# Prerequisite: make run must be active in another terminal.
+# Replay any sensor: make demo-sensor SENSOR=5  (also self-contained; run make stop after).
 demo-sensor:
+	docker compose up -d --build --wait api
 	docker compose run --rm --build notebooks \
 	  uv run --no-sync python -m analysis.mlflow.deploy_demo --sensor $(SENSOR) --http http://api:8000

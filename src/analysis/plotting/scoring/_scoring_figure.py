@@ -300,8 +300,9 @@ def _build_sigmoid_scoring_figure(
             ax.axvline(batch_split_x, color=_SPLIT_COLOR, ls="--", lw=1.0)
 
     if use_index:
-        ax_score_vel.set_xlabel("batch index")
-        ax_score_acc.set_xlabel("batch index")
+        # Only the bottom-most panel of the batch-domain stack (rows 4-8, shared via
+        # batch_share) carries the x-label. Labelling the mid-stack score panels made
+        # their "batch index" text collide with the occupancy-panel title directly below.
         ax_cause.set_xlabel("batch index")
 
     raw_spans = _incident_spans_for_axis(x_values=raw_x, timestamps=raw_time_values, incidents=incidents, use_index=use_index)
@@ -331,5 +332,5 @@ def _build_sigmoid_scoring_figure(
         f"top_k={payload['window_top_k']} fus_thr={payload['fusion_thr']:.2f}",
         y=0.982,
     )
-    fig.subplots_adjust(left=0.055, right=0.992, top=0.93, bottom=0.04, wspace=0.14, hspace=0.36)
+    fig.subplots_adjust(left=0.055, right=0.992, top=0.93, bottom=0.04, wspace=0.14, hspace=0.45)
     return fig
