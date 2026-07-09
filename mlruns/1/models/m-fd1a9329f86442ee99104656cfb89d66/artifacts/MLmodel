@@ -1,0 +1,43 @@
+artifact_path: mlflow-artifacts:/1/models/m-fd1a9329f86442ee99104656cfb89d66/artifacts
+flavors:
+  python_function:
+    artifacts:
+      bundle:
+        path: artifacts/v2
+        uri: file:///app/cache/models/v2
+    cloudpickle_version: 3.1.2
+    code: null
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pyfunc.loaders.code_model
+    model_code_path: /app/src/anomaly_detection/registry/_model_from_code.py
+    python_version: 3.10.20
+    streamable: false
+is_signature_from_type_hint: false
+mlflow_version: 3.13.0
+model_id: m-fd1a9329f86442ee99104656cfb89d66
+model_size_bytes: 42798
+model_uuid: m-fd1a9329f86442ee99104656cfb89d66
+prompts: null
+run_id: 7c5f889d7ad64a088488789c55225219
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  serving_input_path: serving_input_example.json
+  type: dataframe
+signature:
+  inputs: '[{"type": "string", "name": "sensor_id", "required": true}, {"type": "string",
+    "name": "timestamp", "required": true}, {"type": "boolean", "name": "uptime",
+    "required": true}, {"type": "double", "name": "vel_rms_x", "required": true},
+    {"type": "double", "name": "vel_rms_y", "required": true}, {"type": "double",
+    "name": "vel_rms_z", "required": true}, {"type": "double", "name": "accel_rms_x",
+    "required": true}, {"type": "double", "name": "accel_rms_y", "required": true},
+    {"type": "double", "name": "accel_rms_z", "required": true}]'
+  outputs: '[{"type": "string", "name": "sensor_id", "required": true}, {"type": "string",
+    "name": "scenario_group", "required": true}, {"type": "boolean", "name": "anomaly_status",
+    "required": true}, {"type": "double", "name": "alert_score", "required": true},
+    {"type": "double", "name": "occupancy_score", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-07-09 01:18:45.269900'

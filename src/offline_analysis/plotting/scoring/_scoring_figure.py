@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import Patch
 
-from sample_processing.model.current.anomaly_model import load_alert_params
+from anomaly_detection.model.grouped_residual.params import load_alert_params
 
 from ._helpers import (
     _ACCEL_AXIS_COLORS,

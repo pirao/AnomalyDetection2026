@@ -2,7 +2,7 @@
 Model unit tests.
 
 Tests the core model components directly (bypassing the HTTP layer):
-- AnomalyModel: feature extraction, fitting, prediction
+- GroupedResidualDetector: feature extraction, fitting, prediction
 - AlertEngine: alert suppression and re-arming logic
 
 """
@@ -12,9 +12,9 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pytest
 
-from sample_processing.model.current.alerting import AlertEngine
-from sample_processing.model.current.anomaly_model import AnomalyModel
-from sample_processing.model.current.interface import (
+from anomaly_detection.model.grouped_residual.alerting import AlertEngine
+from anomaly_detection.model.grouped_residual.detector import GroupedResidualDetector
+from anomaly_detection.model.shared.interface import (
     AlertDecision,
     DataPoint,
     PredictOutput,
@@ -58,62 +58,62 @@ def _make_pred(*, anomalous: bool, offset: int = 0) -> PredictOutput:
     )
 
 
-# -- AnomalyModel --------------------------------------------------------------
+# -- GroupedResidualDetector --------------------------------------------------------------
 
 
-class TestAnomalyModelFit:
+class TestGroupedResidualDetectorFit:
     def test_fit_marks_model_as_fitted(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         assert model.weights.fitted is False
         model.fit(_make_ts(200))
         assert model.weights.fitted is True
 
     def test_fit_stores_mean_and_std(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(200))
         assert model.weights.mean > 0
         assert model.weights.std > 0
 
     def test_fit_accepts_large_timeseries(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(5000))
         assert model.weights.fitted is True
 
     def test_fit_can_be_called_multiple_times(self):
         """Retraining should update weights without error."""
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(100))
         mean_first = model.weights.mean
         model.fit(_make_ts(100, vel_base=5.0))
         assert model.weights.mean != mean_first
 
 
-class TestAnomalyModelPredict:
+class TestGroupedResidualDetectorPredict:
     def test_predict_raises_if_not_fitted(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         with pytest.raises(RuntimeError):
             model.predict(_make_ts(10))
 
     def test_predict_raises_on_empty_timeseries(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(200))
         with pytest.raises((ValueError, Exception)):
             model.predict(TimeSeries(data=[]))
 
     def test_predict_returns_predict_output(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(200))
         result = model.predict(_make_ts(50))
         assert isinstance(result, PredictOutput)
 
     def test_predict_output_has_anomaly_status(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(200))
         result = model.predict(_make_ts(50))
         assert isinstance(result.anomaly_status, bool)
 
     def test_predict_output_has_timestamp(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(200))
         ts = _make_ts(50)
         result = model.predict(ts)
@@ -121,14 +121,14 @@ class TestAnomalyModelPredict:
 
     def test_normal_data_is_not_anomalous(self):
         """Data from the same distribution as training should not be anomalous."""
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(500, vel_base=1.0, vel_std=0.1, seed=0))
         result = model.predict(_make_ts(100, vel_base=1.0, vel_std=0.1, seed=1))
         assert result.anomaly_status is False
 
     def test_clearly_anomalous_data_is_flagged(self):
         """Data far from the training distribution should be flagged anomalous."""
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         model.fit(_make_ts(500, vel_base=1.0, vel_std=0.1, seed=0))
         # 50x the training mean -> well beyond any reasonable threshold
         result = model.predict(_make_ts(100, vel_base=50.0, vel_std=0.5, seed=99))
@@ -136,7 +136,7 @@ class TestAnomalyModelPredict:
 
     def test_predict_output_timestamp_is_last_point(self):
         """PredictOutput.timestamp must equal the last DataPoint's timestamp."""
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         ts = _make_ts(200)
         model.fit(ts)
         batch = _make_ts(30)
@@ -246,12 +246,12 @@ class TestAlertEngineReArming:
         assert d_re.alert is True
 
 
-# -- AnomalyModel + AlertEngine integration -----------------------------------
+# -- GroupedResidualDetector + AlertEngine integration -----------------------------------
 
 
 class TestModelEngineIntegration:
     def test_normal_then_anomalous_batch(self):
-        model = AnomalyModel()
+        model = GroupedResidualDetector()
         engine = AlertEngine()
         model.fit(_make_ts(500, vel_base=1.0, vel_std=0.1, seed=0))
 
@@ -270,7 +270,7 @@ class TestModelEngineIntegration:
         assert d_anomaly.alert is True
 
     def test_multiple_sensors_have_independent_engines(self):
-        models = {sid: AnomalyModel() for sid in ("a", "b")}
+        models = {sid: GroupedResidualDetector() for sid in ("a", "b")}
         engines = {sid: AlertEngine() for sid in ("a", "b")}
         fit_ts = _make_ts(200)
 

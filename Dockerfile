@@ -33,7 +33,7 @@ FROM base AS api
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project --link-mode=copy
 
-COPY src/sample_processing ./src/sample_processing
+COPY src/anomaly_detection ./src/anomaly_detection
 COPY README.md ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # --no-sync keeps container startup deterministic: the image must already contain
 # the installed environment instead of modifying .venv when the container starts.
-CMD ["uv", "run", "--no-sync", "uvicorn", "sample_processing.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "--no-sync", "uvicorn", "anomaly_detection.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS test
 
@@ -50,11 +50,11 @@ FROM base AS test
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --group test --no-install-project --link-mode=copy
 
-COPY src/sample_processing ./src/sample_processing
-# src/analysis is copied so the benchmark test can import the canonical
-# evaluator (analysis.evaluation.summarize_inference_test_metrics), the single
-# source of truth for precision/recall/F1 shared with the notebooks.
-COPY src/analysis ./src/analysis
+COPY src/anomaly_detection ./src/anomaly_detection
+# src/offline_analysis is copied so the benchmark test can import the canonical
+# evaluator (offline_analysis.evaluation.summarize_inference_test_metrics), the
+# single source of truth for precision/recall/F1 shared with the notebooks.
+COPY src/offline_analysis ./src/offline_analysis
 COPY src/tests ./src/tests
 COPY README.md ./
 
@@ -77,8 +77,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberatio
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --extra notebooks --no-install-project --link-mode=copy
 
-COPY src/sample_processing ./src/sample_processing
-COPY src/analysis ./src/analysis
+COPY src/anomaly_detection ./src/anomaly_detection
+COPY src/offline_analysis ./src/offline_analysis
+COPY src/pipelines ./src/pipelines
 COPY README.md ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \

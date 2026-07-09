@@ -1,0 +1,34 @@
+artifact_path: mlflow-artifacts:/1/models/m-e3f98fc2681c4d31aa7df90513ff2750/artifacts
+flavors:
+  python_function:
+    artifacts:
+      bundle:
+        path: artifacts\v2
+        uri: file:///C:/Users/arthu/OneDrive/Doutorado/Github/AnomalyDetection2026/cache/models/v2
+    cloudpickle_version: 3.1.2
+    code: null
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pyfunc.loaders.code_model
+    model_code_path: C:\Users\arthu\OneDrive\Doutorado\Github\AnomalyDetection2026\src\anomaly_detection\registry\_model_from_code.py
+    python_version: 3.12.3
+    streamable: false
+is_signature_from_type_hint: false
+mlflow_version: 3.13.0
+model_id: m-e3f98fc2681c4d31aa7df90513ff2750
+model_size_bytes: 42825
+model_uuid: m-e3f98fc2681c4d31aa7df90513ff2750
+prompts: null
+run_id: 276b4ae5838a4bfbad4cef0d101c617b
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  serving_input_path: serving_input_example.json
+  type: dataframe
+signature:
+  inputs: '[{"type": "any", "required": true}]'
+  outputs: '[{"type": "any", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-07-09 01:15:57.434718'

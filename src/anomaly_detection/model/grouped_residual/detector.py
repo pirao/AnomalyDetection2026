@@ -1,83 +1,17 @@
-"""Current detector facade around the scoring backend and YAML parameters."""
+"""Grouped-residual detector facade around the scoring engine and YAML parameters."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-from ..scenario_groups import get_scenario_group_key
-from .interface import AlertParams, ModelParams, PipelineParams, PredictOutput, TimeSeries, Weights
-from .sensor_model import SensorModel
-
-# Model- and alert-specific hyperparameters live alongside this file in
-# current/hyperparameters/. The pipeline (windowing) config is shared across
-# every model, so it lives one level up in model/shared/.
-_HYPERPARAMS_DIR = Path(__file__).resolve().parent / "hyperparameters"
-_SHARED_DIR = Path(__file__).resolve().parents[1] / "shared"
-DEFAULT_PARAMS_PATH = _HYPERPARAMS_DIR / "norm_model_hyperparams.yaml"
-DEFAULT_PIPELINE_PARAMS_PATH = _SHARED_DIR / "pipeline_hyperparams.yaml"
-DEFAULT_ALERT_PARAMS_PATH = _HYPERPARAMS_DIR / "alert_hyperparams.yaml"
+from ..shared.interface import PredictOutput, TimeSeries, Weights
+from .params import DEFAULT_PARAMS_PATH, load_model_params
+from .scoring import Scorer
 
 
-def load_model_params(
-    path: Path = DEFAULT_PARAMS_PATH,
-    *,
-    group_key: str | None = None,
-    scenario_id: object | None = None,
-) -> ModelParams:
-    """Load model hyperparameters from YAML. Falls back to defaults if file missing."""
-    def _normalize_sigmoid_params(raw: dict[str, Any]) -> dict[str, Any]:
-        normalized = dict(raw)
-        shared_alpha = normalized.pop("alpha", None)
-        shared_beta = normalized.pop("beta", None)
-        if shared_alpha is not None:
-            normalized.setdefault("alpha_vel", shared_alpha)
-            normalized.setdefault("alpha_accel", shared_alpha)
-        if shared_beta is not None:
-            normalized.setdefault("beta_vel", shared_beta)
-            normalized.setdefault("beta_accel", shared_beta)
-        return normalized
-
-    if not path.exists():
-        return ModelParams()
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    if "defaults" not in data and "groups" not in data:
-        return ModelParams(**_normalize_sigmoid_params(data))
-
-    effective_group = group_key
-    if effective_group is None and scenario_id is not None:
-        effective_group = get_scenario_group_key(scenario_id)
-
-    merged = dict(data.get("defaults", {}))
-    group_overrides = (data.get("groups", {}) or {}).get(effective_group or "", {})
-    if isinstance(group_overrides, dict):
-        merged.update(group_overrides)
-    return ModelParams(**_normalize_sigmoid_params(merged))
-
-
-def load_pipeline_params(path: Path = DEFAULT_PIPELINE_PARAMS_PATH) -> PipelineParams:
-    """Load pipeline hyperparameters from YAML. Falls back to defaults if file missing."""
-    if not path.exists():
-        return PipelineParams()
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    return PipelineParams(**data)
-
-
-def load_alert_params(path: Path = DEFAULT_ALERT_PARAMS_PATH) -> AlertParams:
-    """Load alert engine hyperparameters from YAML. Falls back to defaults if file missing."""
-    if not path.exists():
-        return AlertParams()
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    return AlertParams(**data)
-
-
-class AnomalyModel:
-    """Scenario-aware anomaly detector backed by the current scoring pipeline."""
+class GroupedResidualDetector:
+    """Scenario-aware anomaly detector backed by the grouped-residual scoring pipeline."""
 
     def __init__(
         self,
@@ -97,7 +31,7 @@ class AnomalyModel:
             scenario_id=scenario_id,
             group_key=group_key,
         )
-        self._backend = SensorModel(
+        self._backend = Scorer(
             is_cyclic=is_cyclic,
             baseline_scaler=self.params.baseline_scaler,
         )

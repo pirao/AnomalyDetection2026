@@ -18,9 +18,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .interface import TimeSeries
-from .normalization import apply_norm_scores, fit_norm_baselines
-from .preprocessing import clip_rms_spikes
+from ..shared.interface import TimeSeries
+from .preprocessing import apply_norm_scores, clip_rms_spikes, fit_norm_baselines
 
 _SCENARIO_ID = 0
 
@@ -29,8 +28,8 @@ _ACCEL_RAW = ["accel_rms_x", "accel_rms_y", "accel_rms_z"]
 _DEFAULT_CADENCE_MINUTES = 10.0
 
 
-class SensorModel:
-    """Per-axis raw-RMS anomaly detector for a single sensor."""
+class Scorer:
+    """Per-axis raw-RMS scoring engine for a single sensor."""
 
     def __init__(self, is_cyclic: bool = False, baseline_scaler: str = "standard") -> None:
         if baseline_scaler != "standard":

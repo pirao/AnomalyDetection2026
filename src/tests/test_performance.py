@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytest
 from fastapi.testclient import TestClient
 
-from sample_processing.api.main import app
+from anomaly_detection.api.main import app
 from tests.conftest import (
     _REF_ANOMALOUS,
     _REF_FIT,
@@ -94,7 +94,7 @@ def test_concurrent_sensors_do_not_interfere():
     Multiple threads operating on different sensor IDs must not cross-contaminate
     each other's state (models or alert engines).
     """
-    from sample_processing.api import main as m
+    from anomaly_detection.api import main as m
 
     m._models.clear()
     m._engines.clear()

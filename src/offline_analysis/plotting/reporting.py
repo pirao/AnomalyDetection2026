@@ -1,7 +1,7 @@
 """Notebook display helpers for evaluation results.
 
 Lives in ``plotting`` (notebook-only) so it is never pulled into the production
-import chain: importing ``analysis.evaluation`` / ``analysis.mlflow`` must stay
+import chain: importing ``offline_analysis.evaluation`` / ``pipelines`` must stay
 ``.venv``-safe, and these helpers depend on seaborn + IPython, which are only
 installed in the notebook env (the ``notebooks`` extra).
 """

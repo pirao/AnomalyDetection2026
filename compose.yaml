@@ -1,7 +1,7 @@
 services:
   # make run - Local runtime API.
   # Builds the Dockerfile `api` target, which contains runtime dependencies and
-  # src/sample_processing only. Private data, notebooks, tests, analysis
+  # src/anomaly_detection only. Private data, notebooks, tests, analysis
   # files, and cached models are not copied into this image.
   api:
     build:

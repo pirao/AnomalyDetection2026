@@ -14,7 +14,8 @@ Serving sources, in priority order:
   2. ``_bundle``  - the registered pre-fitted bundle keyed by int ``scenario_id``,
      loaded from the MLflow registry ``@production`` alias at startup.
 
-The ``analysis`` package is NOT a runtime dependency of the lean service/image.
+The ``offline_analysis`` and ``pipelines`` packages are NOT runtime dependencies of
+the lean service/image.
 ``mlflow`` IS a runtime dep (registry client); the bundle load is still best-effort:
 when the registry server is unreachable or has no ``@production`` alias the service
 degrades to runtime-fit serving via ``/fit`` - but that degradation is now *reported*
@@ -33,10 +34,11 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 
-from sample_processing.model.current.alerting import AlertEngine
-from sample_processing.model.current.anomaly_model import AnomalyModel, load_alert_params
-from sample_processing.model.current.interface import DataPoint as _DataPoint
-from sample_processing.model.current.interface import TimeSeries
+from anomaly_detection.model.grouped_residual.alerting import AlertEngine
+from anomaly_detection.model.grouped_residual.detector import GroupedResidualDetector
+from anomaly_detection.model.grouped_residual.params import load_alert_params
+from anomaly_detection.model.shared.interface import DataPoint as _DataPoint
+from anomaly_detection.model.shared.interface import TimeSeries, reading_kwargs_from_row
 
 _logger = logging.getLogger(__name__)
 
@@ -45,8 +47,8 @@ _ALERT_PARAMS = load_alert_params()
 REGISTRY_ALIAS = "production"
 
 # Per-sensor serving state (see module docstring for the resolution order).
-_models: dict[str, AnomalyModel] = {}   # runtime-fit, keyed by sensor_id (priority)
-_bundle: dict[int, AnomalyModel] = {}   # registry bundle, keyed by scenario_id
+_models: dict[str, GroupedResidualDetector] = {}   # runtime-fit, keyed by sensor_id (priority)
+_bundle: dict[int, GroupedResidualDetector] = {}   # registry bundle, keyed by scenario_id
 _engines: dict[str, AlertEngine] = {}   # stateful alerting, keyed by sensor_id
 _serving_meta: dict = {}
 
@@ -69,21 +71,27 @@ REQUEST_LATENCY = Histogram(
 def _load_registry_bundle() -> None:
     """Best-effort, load-once population of ``_bundle`` from the registry.
 
-    Imports ``analysis``/``mlflow`` lazily so this module stays importable (and
-    the lean container starts) even when neither is installed. Any failure is
-    logged and swallowed, leaving ``_bundle`` empty (runtime-fit only).
+    Imports ``registry.bundle`` (which pulls in ``mlflow``) lazily so this module
+    stays importable (and the lean container starts) even when the registry/MLflow
+    stack is unreachable. Any failure is logged and swallowed, leaving ``_bundle``
+    empty (runtime-fit only).
     """
     if _bundle:
         return
     try:
-        from sample_processing.serving.registry import load_for_serving_with_metadata
+        from anomaly_detection.registry.bundle import load_for_serving_with_metadata
         wrapper, meta = load_for_serving_with_metadata(REGISTRY_ALIAS)
         _bundle.update(wrapper.unwrap_python_model()._models)
         _serving_meta.update(meta)
         _logger.info("Loaded %d models from registry @%s", len(_bundle), REGISTRY_ALIAS)
     except Exception as exc:  # noqa: BLE001
+        from anomaly_detection.registry.bundle import resolve_tracking_uri
         _logger.warning(
-            "Registry bundle unavailable (%s); serving runtime-fit models only.", exc
+            "Registry bundle unavailable at %s (%s); serving runtime-fit models only "
+            "until this succeeds. Check that MLFLOW_TRACKING_URI points at a reachable "
+            "server with a '%s' alias registered (locally: `docker compose up mlflow`), "
+            "then restart the service to retry.",
+            resolve_tracking_uri(), exc, REGISTRY_ALIAS,
         )
 
 
@@ -166,20 +174,14 @@ def _to_timeseries(points: list[DataPoint]) -> TimeSeries:
         data.append(
             _DataPoint(
                 timestamp=ts,
-                uptime=p.uptime,
-                vel_x=p.vel_rms_x,
-                vel_y=p.vel_rms_y,
-                vel_z=p.vel_rms_z,
-                acc_x=p.accel_rms_x,
-                acc_y=p.accel_rms_y,
-                acc_z=p.accel_rms_z,
+                **reading_kwargs_from_row(p),
             )
         )
     return TimeSeries(data=data)
 
 
 def _scenario_id_from_sensor_id(sensor_id: str) -> int | None:
-    from sample_processing.model.scenario_groups import scenario_id_from_sensor_id
+    from anomaly_detection.model.shared.scenario_groups import scenario_id_from_sensor_id
     return scenario_id_from_sensor_id(sensor_id)
 
 
@@ -193,7 +195,7 @@ def fit(req: FitRequest):
         raise HTTPException(status_code=422, detail="data must not be empty")
     ts = _to_timeseries(req.data)
     if req.sensor_id not in _models:
-        _models[req.sensor_id] = AnomalyModel(scenario_id=_scenario_id_from_sensor_id(req.sensor_id))
+        _models[req.sensor_id] = GroupedResidualDetector(scenario_id=_scenario_id_from_sensor_id(req.sensor_id))
         _engines[req.sensor_id] = AlertEngine(_ALERT_PARAMS)
     _models[req.sensor_id].fit(ts)
     _engines[req.sensor_id] = AlertEngine(_ALERT_PARAMS)  # reset alert state on retrain

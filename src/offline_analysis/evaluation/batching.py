@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from sample_processing.model.current.interface import DataPoint, TimeSeries
+from anomaly_detection.model.shared.interface import DataPoint, TimeSeries, reading_kwargs_from_row
 
 
 def df_to_timeseries(
@@ -43,13 +43,7 @@ def df_to_timeseries(
         data=[
             DataPoint(
                 timestamp=getattr(row, time_col),
-                uptime=bool(row.uptime),
-                vel_x=float(getattr(row, "vel_rms_x")),
-                vel_y=float(getattr(row, "vel_rms_y")),
-                vel_z=float(getattr(row, "vel_rms_z")),
-                acc_x=float(getattr(row, "accel_rms_x")),
-                acc_y=float(getattr(row, "accel_rms_y")),
-                acc_z=float(getattr(row, "accel_rms_z")),
+                **reading_kwargs_from_row(row),
             )
             for row in rows.itertuples(index=False)
         ]

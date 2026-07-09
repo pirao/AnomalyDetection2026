@@ -1,8 +1,9 @@
-"""Priority-aware alert state machine for current model predictions."""
+"""Priority-aware alert state machine for grouped-residual detector predictions."""
 
 from __future__ import annotations
 
-from ..interface import AlertDecision, AlertParams, PredictOutput
+from ...shared.interface import AlertDecision, PredictOutput
+from ..params import AlertParams
 from ._utils import (
     check_confirmation,
     confirmation_anchor_entry,
@@ -10,7 +11,7 @@ from ._utils import (
     strict_majority_count,
 )
 from .group_logic import build_group_candidate
-from .priority_queue import (
+from .pending_events import (
     drop_pending_events_covered_by_group,
     pending_event_resolution_state,
     pending_events_debug,

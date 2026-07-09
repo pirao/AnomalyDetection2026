@@ -4,12 +4,12 @@ from __future__ import annotations
 # pytest src/tests/test_serving.py -v --pdb for breakpoint debugging
 
 def test_bundle_class_lives_in_deployable_package():
-    import sample_processing.serving.registry as reg
-    assert reg.AnomalyDetectorBundle.__module__ == "sample_processing.serving.registry"
+    import anomaly_detection.registry.bundle as reg
+    assert reg.AnomalyDetectorBundle.__module__ == "anomaly_detection.registry.bundle"
 
 
 def test_scenario_id_parsing_handles_known_forms():
-    from sample_processing.serving.registry import AnomalyDetectorBundle
+    from anomaly_detection.registry.bundle import AnomalyDetectorBundle
     f = AnomalyDetectorBundle._scenario_id
     assert f("sensor_9") == 9
     assert f("analysis_sensor_12") == 12
@@ -18,20 +18,20 @@ def test_scenario_id_parsing_handles_known_forms():
 
 
 def test_resolve_tracking_uri_prefers_env(monkeypatch):
-    from sample_processing.serving import registry
+    from anomaly_detection.registry import bundle
     monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
-    assert registry.resolve_tracking_uri() == "http://mlflow:5000"
+    assert bundle.resolve_tracking_uri() == "http://mlflow:5000"
 
 
 def test_resolve_tracking_uri_falls_back_to_sqlite(monkeypatch):
-    from sample_processing.serving import registry
+    from anomaly_detection.registry import bundle
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
-    assert registry.resolve_tracking_uri().startswith("sqlite:///")
+    assert bundle.resolve_tracking_uri().startswith("sqlite:///")
 
 def test_metadata_reports_runtime_fit_when_no_bundle():
     from fastapi.testclient import TestClient
 
-    from sample_processing.api import main as m
+    from anomaly_detection.api import main as m
     m._bundle.clear()
     m._serving_meta.clear()
     with TestClient(m.app) as c:
@@ -46,7 +46,7 @@ def test_metadata_reports_runtime_fit_when_no_bundle():
 def test_ready_returns_503_without_bundle():
     from fastapi.testclient import TestClient
 
-    from sample_processing.api import main as m
+    from anomaly_detection.api import main as m
     m._bundle.clear()
     with TestClient(m.app) as c:
         r = c.get("/ready")
@@ -57,7 +57,7 @@ def test_ready_returns_503_without_bundle():
 def test_metrics_endpoint_exposes_prometheus_text():
     from fastapi.testclient import TestClient
 
-    from sample_processing.api import main as m
+    from anomaly_detection.api import main as m
     with TestClient(m.app) as c:
         c.get("/health")
         r = c.get("/metrics")

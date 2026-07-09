@@ -13,30 +13,30 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from IPython.display import clear_output, display
 
-from analysis.evaluation import (
+from anomaly_detection.model.grouped_residual.detector import GroupedResidualDetector
+from anomaly_detection.model.grouped_residual.params import (
+    ModelParams,
+    load_alert_params,
+    load_model_params,
+)
+from anomaly_detection.model.shared.config import load_pipeline_params
+from anomaly_detection.model.shared.scenario_groups import (
+    get_scenario_group_key,
+    get_scenario_group_label,
+)
+from offline_analysis.evaluation import (
     df_to_timeseries,
     diagnose_replay_against_incidents,
     get_incident_spans,
     simulate_offline_replay_one_scenario,
-)
-from sample_processing.model.current.anomaly_model import (
-    AnomalyModel,
-    load_alert_params,
-    load_model_params,
-    load_pipeline_params,
-)
-from sample_processing.model.current.interface import ModelParams
-from sample_processing.model.scenario_groups import (
-    get_scenario_group_key,
-    get_scenario_group_label,
 )
 
 from ._helpers import DEFAULT_WIDGET_EXPORT_DIR, _scenario_slug
 from ._replay_rendering import _compute_replay_plot_state, _plot_replay_column, _with_split_view
 
 # Module-level cache for fitted models (keyed by scenario_id).
-# Avoids re-fitting AnomalyModel on every slider change when models=None.
-_offline_replay_fit_cache: dict[object, AnomalyModel] = {}
+# Avoids re-fitting GroupedResidualDetector on every slider change when models=None.
+_offline_replay_fit_cache: dict[object, GroupedResidualDetector] = {}
 
 
 def _effective_model_params(
@@ -190,7 +190,7 @@ def create_offline_replay_widget_ui(
     Parameters
     ----------
     models :
-        Optional ``{scenario_id: AnomalyModel}`` mapping produced by
+        Optional ``{scenario_id: GroupedResidualDetector}`` mapping produced by
         ``load_fitted_models()``. When provided the widget skips the internal
         fit step and uses the pre-fitted model directly. Alarm-rule sliders
         still work normally. Pass ``None`` (default) to keep the original
@@ -366,7 +366,7 @@ def create_offline_replay_widget_ui(
         elif scenario_id in _offline_replay_fit_cache:
             _export_model = _offline_replay_fit_cache[scenario_id]
         else:
-            _export_model = AnomalyModel(is_cyclic=False)
+            _export_model = GroupedResidualDetector(is_cyclic=False)
             _export_model.params = model_params
             _export_model.params.baseline_scaler = "standard"
             if hasattr(_export_model._backend, "baseline_scaler"):
@@ -505,7 +505,7 @@ def create_offline_replay_widget_ui(
             elif sid in _offline_replay_fit_cache:
                 _prefit_model = _offline_replay_fit_cache[sid]
             else:
-                _prefit_model = AnomalyModel(is_cyclic=False)
+                _prefit_model = GroupedResidualDetector(is_cyclic=False)
                 _prefit_model.params = model_params
                 _prefit_model.params.baseline_scaler = "standard"
                 if hasattr(_prefit_model._backend, "baseline_scaler"):
@@ -679,7 +679,7 @@ def create_offline_replay_widget(
     Parameters
     ----------
     models :
-        Optional ``{scenario_id: AnomalyModel}`` from ``load_fitted_models()``.
+        Optional ``{scenario_id: GroupedResidualDetector}`` from ``load_fitted_models()``.
         When provided the widget skips the internal fit step. Pass ``None``
         (default) to keep fit-from-data behaviour.
     """

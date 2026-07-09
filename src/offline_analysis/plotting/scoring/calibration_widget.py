@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from IPython.display import clear_output
 
-from sample_processing.model.scenario_groups import GROUP_DEFINITIONS
+from anomaly_detection.model.shared.scenario_groups import GROUP_DEFINITIONS
 
 from ._helpers import (
     _CURR_FILL_ACCEL,
@@ -26,7 +26,7 @@ from ._helpers import (
     _build_mask,
     _safe_series,
 )
-from ._sigmoid_math import (
+from ._scoring_payload import (
     _recompute_dnorm_frame,
     _sigmoid,
     _solve_alpha_beta_from_two_anchors,

@@ -46,7 +46,11 @@ The detector is deliberately small, so every alarm can be traced to a cause. It 
 
 3. **Decide whether to alarm.** The raw score stream is noisy, so the engine waits for a deviation to repeat across several windows before firing, then stays quiet through a cooldown. One fault yields one alarm instead of a burst.
 
-   The diagram below shows how the three escalation levels interact: a single channel feeds into a group-3 pattern (same modality), which feeds into group-6 (full cross-modal). These form an ownership ladder — single-channel (priority 0) < group-3 (1) < group-6 (2) — where a confirmed higher-priority owner suppresses lower-priority re-alarms until it resets. A single channel confirms on a 3-of-4 window gate and a group on a 2-of-3 gate. Group-6 is implemented but disabled by default — group-3 already catches every incident within the current dataset's window lengths.
+   The escalation levels form an **ownership ladder**, ordered by priority. A confirmed higher level takes ownership of the episode and suppresses lower-level re-alarms until it resets:
+
+   - **Priority 0 — single channel.** One channel deviates; confirms on a **3-of-4** window gate.
+   - **Priority 1 — group-3 (same modality).** All three axes of one modality (velocity *or* acceleration) deviate together; confirms on a **2-of-3** gate and suppresses single-channel alarms.
+   - **Priority 2 — group-6 (full cross-modal).** Velocity *and* acceleration signatures both fire; suppresses group-3 and single-channel. Implemented but **disabled by default** — group-3 already catches every incident within the current dataset's window lengths.
 
    ![Alert hierarchy](reports/figures/alert_hierarchy/alert-hierarchy-demo.svg)
 
@@ -70,26 +74,32 @@ The current model replaces a single global detector with per-group residual scor
 ```text
 AnomalyDetection2026/
 |-- src/
-|   |-- sample_processing/              # deployable service package (only code in the api image)
+|   |-- anomaly_detection/              # SERVE (online) - the only code in the api image
 |   |   |-- api/main.py                 # FastAPI: /fit, /predict, /health, /ready, /metadata, /metrics
-|   |   |-- serving/registry.py         # AnomalyDetectorBundle pyfunc + @production loader
-|   |   `-- model/
-|   |       |-- scenario_groups.py      # scenario_id -> group mapping
-|   |       |-- shared/                 # windowing/pipeline hyperparameters (all models)
-|   |       |-- baseline/               # global velocity-norm z-score detector + simple lock
-|   |       `-- current/                # shipped detector: per-group residual scoring
-|   |           |-- anomaly_model.py sensor_model.py normalization.py preprocessing.py
-|   |           |-- interface.py        # Pydantic request/response contracts
-|   |           |-- alerting/           # stateful engine.py, group_logic.py, priority_queue.py
+|   |   |-- registry/bundle.py          # AnomalyDetectorBundle pyfunc + @production loader (serving bridge)
+|   |   `-- model/                      # root holds only folders
+|   |       |-- shared/                 # interface.py (shared contracts), config.py, scenario_groups.py, pipeline_hyperparams.yaml
+|   |       |-- baseline/               # global velocity-norm z-score detector: detector.py, params.py, alert_engine.py, hyperparameters/
+|   |       `-- grouped_residual/       # shipped detector: per-group residual scoring
+|   |           |-- detector.py         # GroupedResidualDetector facade over the scorer + params
+|   |           |-- scoring.py          # Scorer scoring engine (sigmoid, top-k, occupancy, fusion)
+|   |           |-- preprocessing.py    # raw-RMS clip + per-channel standardization
+|   |           |-- params.py           # ModelParams/AlertParams contracts + YAML loaders
+|   |           |-- alerting/           # stateful engine.py, group_logic.py, pending_events.py
 |   |           `-- hyperparameters/    # alert_hyperparams.yaml + norm params
 |   |
-|   |-- analysis/                       # offline-only tooling (not shipped in the api image)
-|   |   |-- evaluation/                 # 29-scenario benchmark orchestration + per-event metrics
-|   |   |-- mlflow/                     # experiment logging, registry promote, deploy_demo.py (GIF)
+|   |-- pipelines/                      # BUILD (lifecycle) - not shipped in the api image
+|   |   |-- model_cache.py              # fit + version per-sensor models into cache/
+|   |   |-- mlflow_experiments.py       # baseline-vs-current experiment tracking
+|   |   |-- mlflow_registry.py          # register bundle + promote @production
+|   |   `-- deploy_demo.py              # replay a sensor through the live API -> GIF
+|   |
+|   |-- offline_analysis/               # ANALYZE (offline) - cache-only, never the registry
+|   |   |-- evaluation/                 # evaluation.py, metrics.py, report_tables.py, diagnostics.py, batching/incidents/simulation
 |   |   `-- plotting/                   # EDA + scoring widgets (eda/, scoring/), shared style
 |   `-- tests/                          # conftest + contract, model, serving, performance, evaluation
 |
-|-- notebooks/                          # EDA (0.01) and model-debugging (1.01) notebooks
+|-- notebooks/                          # EDA (0.01) and model-debugging (1.02) notebooks
 |-- data/                               # staging: README, manifest.json, raw/ (parquet + labels not committed)
 |-- cache/models/v1/                    # committed per-sensor fits 1.pkl..29.pkl for offline replay
 |-- reports/figures/                    # alert_hierarchy/, mlflow/ (deploy_demo.gif), widget_exports/
@@ -100,9 +110,13 @@ AnomalyDetection2026/
 |-- Dockerfile                          # multi-stage build: base -> api / test / notebooks
 |-- compose.yaml                        # services: api, mlflow, test, inference-test, notebooks
 |-- Makefile                            # run/demo/test/inference-test/notebooks targets
-|-- pyproject.toml                      # project=sample_processing; deps, ruff + pytest config
+|-- pyproject.toml                      # project=anomaly_detection; deps, ruff + pytest config
 `-- uv.lock                             # uv lockfile
 ```
+
+The three `src/` packages follow the MLOps **serve / build / analyze** split shown above. For *why*
+the code is organized this way — the offline-vs-online boundary, the model-identity rule, and the
+full dependency graph — see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Private benchmark data (parquet + `incidents.yaml`) is git-ignored; restore it as described in
 [data/raw/README.md](data/raw/README.md) before running the demo, tests, or notebooks.
@@ -113,8 +127,8 @@ Every workflow is a `make` target that wraps a `docker compose` command, so you 
 
 | `make` target | Wraps (`docker compose`) | What it does | Requires |
 |---|---|---|---|
-| `make run` | `up --build api` | Builds and starts the API + mlflow server on `localhost:8000` | `mlflow.db` + `mlruns/` present |
-| `make demo` | `up -d --wait api` + `run --rm notebooks … deploy_demo` | Starts the API (if needed), replays sensor 9, and regenerates `reports/figures/mlflow/deploy_demo.gif` | private data |
+| `make run` | `up --build api` | Builds and starts the API (`localhost:8000`) and its mlflow dependency (`localhost:5000`) | `mlflow.db` + `mlruns/` present |
+| `make demo` | `up -d --build --wait api` + `run --rm --build notebooks … deploy_demo` | Starts the API (if needed), replays sensor 9, and regenerates `reports/figures/mlflow/deploy_demo.gif` | private data |
 | `make demo-sensor SENSOR=N` | same, with `--sensor N` | Starts the API (if needed) and replays any sensor (`N` = scenario id) | private data |
 | `make test` | `run --rm --build test` | Fast test suite: unit, contract, performance | private data for contract/performance (auto-skipped without it) |
 | `make inference-test` | `run --rm --build inference-test` | 29-scenario benchmark (~15 min); the source of the numbers in [Results](#results) | private data |
@@ -145,7 +159,7 @@ own, `make run` still works.
 ### Testing
 
 - **`make test`** runs the fast suite: unit tests, API contract tests, and a concurrency/performance pass. Without private data only the unit tests run; the others skip automatically.
-- **`make inference-test`** replays all 29 scenarios through the API end-to-end and takes about 15 minutes. This is the source of the precision/recall/F1 numbers in [Results](#results). A few per-scenario assertions are expected to fail by design; see the failure analysis in [notebooks/1.01-acp-model-debugging.ipynb](notebooks/1.01-acp-model-debugging.ipynb) for the full breakdown of scenarios 6, 7, 27, and 29.
+- **`make inference-test`** replays all 29 scenarios through the API end-to-end and takes about 15 minutes. This is the source of the precision/recall/F1 numbers in [Results](#results). A few per-scenario assertions are expected to fail by design; see the failure analysis in [notebooks/1.02-acp-model-debugging.ipynb](notebooks/1.02-acp-model-debugging.ipynb) for the full breakdown of scenarios 6, 7, 27, and 29.
 
 ### Working with private data
 

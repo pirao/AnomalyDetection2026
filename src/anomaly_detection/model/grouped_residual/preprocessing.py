@@ -1,6 +1,6 @@
-"""Raw-RMS feature pipeline: spike clipping + per-channel standard baselines.
+"""Raw-RMS preprocessing: spike clipping + per-channel standard baselines.
 
-Two stages of the same pipeline live here:
+Two stages of the pre-scoring data preparation live here:
 
 1. ``clip_rms_spikes`` replaces gross RMS spikes with neighbour means (preprocessing).
 2. ``fit_norm_baselines`` / ``apply_norm_scores`` fit and apply per-channel standard

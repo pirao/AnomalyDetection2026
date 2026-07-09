@@ -18,25 +18,21 @@ from typing import Any
 
 import pandas as pd
 
-from sample_processing.model.current.alerting import AlertEngine
-from sample_processing.model.current.anomaly_model import (
-    AnomalyModel,
+from anomaly_detection.model.grouped_residual.alerting import AlertEngine
+from anomaly_detection.model.grouped_residual.detector import GroupedResidualDetector
+from anomaly_detection.model.grouped_residual.params import (
+    AlertParams,
+    ModelParams,
     load_alert_params,
-    load_pipeline_params,
 )
-from sample_processing.model.current.interface import AlertParams, ModelParams, PredictOutput
+from anomaly_detection.model.shared.config import load_pipeline_params
+from anomaly_detection.model.shared.interface import PredictOutput
 
 from .batching import df_to_timeseries, iter_row_batches, iter_time_batches
 from .incidents import get_incident_spans
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_CANONICAL_DATA_DIR = _REPO_ROOT / "data" / "raw"
-_LEGACY_DATA_DIR = _REPO_ROOT / "data"
-DEFAULT_DATA_DIR = (
-    _CANONICAL_DATA_DIR
-    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
-    else _LEGACY_DATA_DIR
-)
+DEFAULT_DATA_DIR = _REPO_ROOT / "data" / "raw"
 
 
 def _infer_expected_samples_from_pipeline(
@@ -90,7 +86,7 @@ class _BatchAlertResult:
 
 
 def _prepare_replay_model(
-    model: AnomalyModel | None,
+    model: GroupedResidualDetector | None,
     *,
     is_cyclic: bool,
     baseline_scaler: str | None,
@@ -98,16 +94,16 @@ def _prepare_replay_model(
     model_params_override: ModelParams | None,
     fit_df: pd.DataFrame,
     time_col: str,
-) -> AnomalyModel:
+) -> GroupedResidualDetector:
     """Return the model to replay with.
 
-    When ``model`` is ``None`` a fresh ``AnomalyModel`` is constructed and fitted
+    When ``model`` is ``None`` a fresh ``GroupedResidualDetector`` is constructed and fitted
     on ``fit_df``; otherwise the pre-fitted ``model`` is reused and only
     ``model_params_override`` (alarm-rule params) is applied. Behaviour is
     identical to the original inline setup.
     """
     if model is None:
-        model = AnomalyModel(
+        model = GroupedResidualDetector(
             params_path=params_path,
             is_cyclic=is_cyclic,
         )
@@ -303,7 +299,7 @@ def _simulate_replay_batches(
     pred_df: pd.DataFrame,
     *,
     batch_iterator,
-    model: AnomalyModel | None = None,
+    model: GroupedResidualDetector | None = None,
     is_cyclic: bool = False,
     baseline_scaler: str | None = None,
     params_path: Path | None = None,
@@ -392,7 +388,7 @@ def simulate_offline_replay_one_scenario(
     fit_df: pd.DataFrame,
     pred_df: pd.DataFrame,
     *,
-    model: AnomalyModel | None = None,
+    model: GroupedResidualDetector | None = None,
     is_cyclic: bool = False,
     baseline_scaler: str | None = None,
     params_path: Path | None = None,
@@ -413,7 +409,7 @@ def simulate_offline_replay_one_scenario(
     Parameters
     ----------
     model :
-        Optional pre-fitted ``AnomalyModel``. When provided the ``fit`` step is
+        Optional pre-fitted ``GroupedResidualDetector``. When provided the ``fit`` step is
         skipped entirely - only ``model_params_override`` (alarm-rule params)
         is applied before each batch. Pass ``None`` (default) to keep the
         existing fit-from-data behaviour.

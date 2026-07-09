@@ -8,7 +8,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from sample_processing.model.current.anomaly_model import load_pipeline_params
+from anomaly_detection.model.shared.config import load_pipeline_params
 
 # -- Paths ---------------------------------------------------------------------
 
@@ -131,7 +131,7 @@ def _load_ref_data() -> tuple[list[dict], list[dict], list[dict]]:
 @pytest.fixture(autouse=True)
 def _reset_app_state():
     """Clear per-sensor state between every test."""
-    from sample_processing.api import main as m
+    from anomaly_detection.api import main as m
 
     m._models.clear()
     m._engines.clear()
@@ -153,7 +153,7 @@ def _drain_alert(client, sensor_id: str, data: list, n: int = 10) -> bool:
 
 @pytest.fixture()
 def client() -> Generator[TestClient, None, None]:
-    from sample_processing.api.main import app
+    from anomaly_detection.api.main import app
 
     with TestClient(app) as c:
         yield c
@@ -184,8 +184,8 @@ def scenario_alerts() -> dict[int, list[str]]:
     Tests in test_evaluation.py look up results here instead of re-running the
     pipeline, reducing total scenario executions from O(tests) to O(scenarios).
     """
-    from sample_processing.api import main as m
-    from sample_processing.api.main import app
+    from anomaly_detection.api import main as m
+    from anomaly_detection.api.main import app
 
     m._models.clear()
     m._engines.clear()

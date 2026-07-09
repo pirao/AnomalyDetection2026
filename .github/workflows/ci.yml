@@ -25,7 +25,7 @@ jobs:
         run: uv sync --group test --group dev
 
       - name: Lint (ruff)
-        run: uv run ruff check src/sample_processing src/tests
+        run: uv run ruff check src/anomaly_detection src/tests
 
       - name: Unit tests
         run: uv run pytest src/tests/test_model.py src/tests/test_serving.py -v

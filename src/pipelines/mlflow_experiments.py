@@ -7,13 +7,13 @@ the local SQLite file). View results at http://localhost:5000 after running
 ``docker compose up mlflow``.
 
 **Baseline files required** - before calling this function you must provide:
-    src/sample_processing/model/baseline/anomaly_model.py
-    src/sample_processing/model/baseline/alert_engine.py
-    src/sample_processing/model/baseline/__init__.py
-    src/sample_processing/model/baseline/hyperparameters/model_hyperparams.yaml
+    src/anomaly_detection/model/baseline/detector.py
+    src/anomaly_detection/model/baseline/alert_engine.py
+    src/anomaly_detection/model/baseline/__init__.py
+    src/anomaly_detection/model/baseline/hyperparameters/model_hyperparams.yaml
 
 The pipeline (windowing) config is shared across models and read from
-``src/sample_processing/model/shared/pipeline_hyperparams.yaml``.
+``src/anomaly_detection/model/shared/pipeline_hyperparams.yaml``.
 """
 
 from __future__ import annotations
@@ -28,9 +28,10 @@ import pandas as pd
 # (e.g. the http://localhost:5000 dev server) and falls back to the local
 # sqlite file. Hardcoding the sqlite URI here would silently bypass the server
 # and write artifacts to local file:// paths the api container cannot read.
-from sample_processing.serving.registry import resolve_tracking_uri
+from anomaly_detection.registry.bundle import resolve_tracking_uri
 
 from .model_cache import (
+    MODEL_CODE_VERSION,
     _published_version_meta,
     compute_config_hash,
     data_digest,
@@ -38,8 +39,8 @@ from .model_cache import (
     model_fingerprint,
 )
 
-# This module lives at src/analysis/mlflow/mlflow_experiments.py -> repo root is 3 up.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+# This module lives at src/pipelines/mlflow_experiments.py -> repo root is 2 up.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The tracking target (http dev server or local sqlite fallback) is resolved by
 # resolve_tracking_uri(); view a sqlite store with:
@@ -60,9 +61,9 @@ def _evaluate_baseline_scenarios(
     Returns a dict mapping scenario_id -> list of alert timestamp ISO strings,
     in the same format that ``summarize_inference_test_metrics`` expects.
     """
-    from analysis.evaluation.batching import df_to_timeseries, iter_time_batches
-    from sample_processing.model.baseline.alert_engine import AlertEngine as BaselineAlertEngine
-    from sample_processing.model.baseline.anomaly_model import AnomalyModel as BaselineModel
+    from anomaly_detection.model.baseline.alert_engine import AlertEngine as BaselineAlertEngine
+    from anomaly_detection.model.baseline.detector import BaselineDetector as BaselineModel
+    from offline_analysis.evaluation.batching import df_to_timeseries, iter_time_batches
 
     alerts_by_scenario: dict[int, list[str]] = {}
     for sid in ordered_ids:
@@ -109,7 +110,7 @@ def _evaluate_current_scenarios_from_cache(
     artifact is identical to what register_bundle packages, making the fingerprint
     join in fetch_evaluation_metrics strictly valid.
     """
-    from analysis.evaluation.simulation import simulate_offline_replay_one_scenario
+    from offline_analysis.evaluation.simulation import simulate_offline_replay_one_scenario
 
     alerts_by_scenario: dict[int, list[str]] = {}
     for sid in ordered_ids:
@@ -148,7 +149,7 @@ def _build_experiment_report(
     ordered_ids: list[int],
 ) -> dict[str, Any]:
     """Compute metrics and notebook-summary DataFrames from alert results."""
-    from analysis.evaluation.evaluation import (
+    from offline_analysis.evaluation import (
         build_inference_test_notebook_summary,
         summarize_inference_test_metrics,
     )
@@ -385,22 +386,26 @@ def compare_baseline_vs_current(
         dicts from each evaluation run, including all notebook summary DataFrames.
     """
     import mlflow
-    from analysis.evaluation.evaluation import (
-        _prepare_scenario_frames,
-        _scenario_ids_from_data_dir,
+
+    from anomaly_detection.model.baseline.detector import (
+        BaselineDetector as BaselineModel,
     )
-    from analysis.evaluation.incidents import load_incidents_by_scenario
-    from analysis.evaluation.simulation import DEFAULT_DATA_DIR
-    from sample_processing.model.baseline.anomaly_model import (
-        AnomalyModel as BaselineModel,
+    from anomaly_detection.model.grouped_residual.params import (
+        DEFAULT_PARAMS_PATH,
+        load_alert_params,
     )
-    from sample_processing.model.baseline.anomaly_model import (
-        load_pipeline_params as load_baseline_pipeline_params,
-    )
-    from sample_processing.model.current.anomaly_model import DEFAULT_PARAMS_PATH, load_alert_params
-    from sample_processing.model.current.anomaly_model import (
+    from anomaly_detection.model.grouped_residual.params import (
         load_model_params as load_current_model_params,
     )
+    from anomaly_detection.model.shared.config import (
+        load_pipeline_params as load_baseline_pipeline_params,
+    )
+    from offline_analysis.evaluation import (
+        prepare_scenario_frames,
+        scenario_ids_from_data_dir,
+    )
+    from offline_analysis.evaluation.incidents import load_incidents_by_scenario
+    from offline_analysis.evaluation.simulation import DEFAULT_DATA_DIR
 
     resolved_data_dir = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR
     incidents_by_scenario = load_incidents_by_scenario(labels_path)
@@ -435,11 +440,11 @@ def compare_baseline_vs_current(
         ordered_ids = (
             [int(s) for s in scenario_ids]
             if scenario_ids is not None
-            else _scenario_ids_from_data_dir(resolved_data_dir)
+            else scenario_ids_from_data_dir(resolved_data_dir)
         )
         _df = None
 
-    scenario_frames = _prepare_scenario_frames(
+    scenario_frames = prepare_scenario_frames(
         full_df=_df,
         data_dir=resolved_data_dir,
         ordered_ids=ordered_ids,
@@ -488,17 +493,19 @@ def compare_baseline_vs_current(
 
     data_version = data_digest(resolved_data_dir)
 
-    # Code fingerprint (same for both runs in this invocation).
+    # Git provenance (recorded as a tag on each run; NOT part of the fingerprint).
     git_info = git_revision()
 
     # Config fingerprints: each model's own hyperparameters + shared pipeline.
+    # The code axis is MODEL_CODE_VERSION so the fingerprint matches the one the
+    # cache stored for the same model code, regardless of intervening commits.
     baseline_config = {
         "z_threshold": int(baseline_model_params.z_threshold),
         "window_anomaly_ratio": float(baseline_model_params.window_anomaly_ratio),
         "pipeline": pipeline_params,
     }
     baseline_cfg_hash = compute_config_hash(baseline_config)
-    baseline_fp = model_fingerprint(data_version, baseline_cfg_hash, git_info["git_sha"])
+    baseline_fp = model_fingerprint(data_version, baseline_cfg_hash, MODEL_CODE_VERSION)
 
     mlflow.set_tracking_uri(resolve_tracking_uri())
     mlflow.set_experiment("baseline-vs-current")

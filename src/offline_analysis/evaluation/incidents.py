@@ -13,13 +13,7 @@ from typing import Any, Iterable
 import pandas as pd
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_CANONICAL_LABELS_PATH = _REPO_ROOT / "data" / "raw" / "labels" / "incidents.yaml"
-_LEGACY_LABELS_PATH = _REPO_ROOT / "labels" / "incidents.yaml"
-DEFAULT_LABELS_PATH = (
-    _CANONICAL_LABELS_PATH
-    if _CANONICAL_LABELS_PATH.exists()
-    else _LEGACY_LABELS_PATH
-)
+DEFAULT_LABELS_PATH = _REPO_ROOT / "data" / "raw" / "labels" / "incidents.yaml"
 
 
 def assign_incident_label(

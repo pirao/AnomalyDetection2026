@@ -17,7 +17,7 @@ Scoring intent
 
 import pytest
 
-from analysis.evaluation import summarize_inference_test_metrics
+from offline_analysis.evaluation import summarize_inference_test_metrics
 from tests.conftest import (
     DATA_AVAILABLE,
     NO_INCIDENT_IDS,

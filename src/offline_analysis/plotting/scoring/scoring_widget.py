@@ -3,7 +3,7 @@
 Drives ``_build_sigmoid_scoring_figure`` with cached model fits and
 pre-scored batches so sliders for alpha/beta/threshold respond without a
 refit. Exposes a "Export all defaults" action that renders one figure per
-scenario using the current slider values. Consumer: ``notebooks/1.01-acp-model-debugging.ipynb``.
+scenario using the current slider values. Consumer: ``notebooks/1.02-acp-model-debugging.ipynb``.
 """
 
 from __future__ import annotations
@@ -17,15 +17,15 @@ import pandas as pd
 from IPython.display import clear_output
 from IPython.display import display as _ipy_display
 
-from sample_processing.model.current.anomaly_model import load_model_params
-from sample_processing.model.scenario_groups import (
+from anomaly_detection.model.grouped_residual.params import load_model_params
+from anomaly_detection.model.shared.scenario_groups import (
     get_scenario_group_key,
     get_scenario_group_label,
 )
 
 from ._helpers import _ACCEL_COLS, _VEL_COLS, DEFAULT_WIDGET_EXPORT_DIR, _scenario_slug
 from ._scoring_figure import _build_sigmoid_scoring_figure
-from ._sigmoid_math import _FastPayloadKey, build_sigmoid_scoring_payload_fast
+from ._scoring_payload import _FastPayloadKey, build_sigmoid_scoring_payload_fast
 
 
 def create_sigmoid_scoring_widget(

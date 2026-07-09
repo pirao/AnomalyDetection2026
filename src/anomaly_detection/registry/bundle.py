@@ -42,13 +42,13 @@ class AnomalyDetectorBundle(mlflow.pyfunc.PythonModel):
 
     @staticmethod
     def _scenario_id(sensor_id) -> int | None:
-        from sample_processing.model.scenario_groups import scenario_id_from_sensor_id
+        from anomaly_detection.model.shared.scenario_groups import scenario_id_from_sensor_id
         return scenario_id_from_sensor_id(sensor_id)
 
     def _to_timeseries(self, frame: pd.DataFrame):
         from datetime import datetime
 
-        from sample_processing.model.current.interface import DataPoint, TimeSeries
+        from anomaly_detection.model.shared.interface import DataPoint, TimeSeries
 
         points = []
         for row in frame.itertuples(index=False):
@@ -70,7 +70,7 @@ class AnomalyDetectorBundle(mlflow.pyfunc.PythonModel):
         return TimeSeries(data=points)
 
     def predict(self, context, model_input: pd.DataFrame, params=None) -> pd.DataFrame:
-        from sample_processing.model.scenario_groups import get_scenario_group_key
+        from anomaly_detection.model.shared.scenario_groups import get_scenario_group_key
 
         results = []
         for sensor_id, frame in model_input.groupby("sensor_id"):

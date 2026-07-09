@@ -34,10 +34,10 @@ notebooks:
 demo:
 	docker compose up -d --build --wait api
 	docker compose run --rm --build notebooks \
-	  uv run --no-sync python -m analysis.mlflow.deploy_demo --sensor 9 --http http://api:8000
+	  uv run --no-sync python -m pipelines.deploy_demo --sensor 9 --http http://api:8000
 
 # Replay any sensor: make demo-sensor SENSOR=5  (also self-contained; run make stop after).
 demo-sensor:
 	docker compose up -d --build --wait api
 	docker compose run --rm --build notebooks \
-	  uv run --no-sync python -m analysis.mlflow.deploy_demo --sensor $(SENSOR) --http http://api:8000
+	  uv run --no-sync python -m pipelines.deploy_demo --sensor $(SENSOR) --http http://api:8000

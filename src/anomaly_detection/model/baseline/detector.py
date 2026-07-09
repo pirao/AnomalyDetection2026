@@ -3,38 +3,12 @@
 from pathlib import Path
 
 import numpy as np
-import yaml
 
-from .interface import ModelParams, PipelineParams, PredictOutput, TimeSeries, Weights
-
-# Model-specific hyperparameters live alongside this file in
-# baseline/hyperparameters/. The pipeline (windowing) config is shared across
-# every model, so it lives one level up in model/shared/.
-_HYPERPARAMS_DIR = Path(__file__).resolve().parent / "hyperparameters"
-_SHARED_DIR = Path(__file__).resolve().parents[1] / "shared"
-DEFAULT_PARAMS_PATH = _HYPERPARAMS_DIR / "model_hyperparams.yaml"
-DEFAULT_PIPELINE_PARAMS_PATH = _SHARED_DIR / "pipeline_hyperparams.yaml"
+from ..shared.interface import PredictOutput, TimeSeries, Weights
+from .params import DEFAULT_PARAMS_PATH, load_model_params
 
 
-def load_model_params(path: Path = DEFAULT_PARAMS_PATH) -> ModelParams:
-    """Load model hyperparameters from YAML. Falls back to ModelParams defaults if file missing."""
-    if not path.exists():
-        return ModelParams()
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    return ModelParams(**data)
-
-
-def load_pipeline_params(path: Path = DEFAULT_PIPELINE_PARAMS_PATH) -> PipelineParams:
-    """Load pipeline hyperparameters from YAML. Falls back to PipelineParams defaults if file missing."""
-    if not path.exists():
-        return PipelineParams()
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    return PipelineParams(**data)
-
-
-class AnomalyModel:
+class BaselineDetector:
     """Simple baseline detector using velocity norm z-scores."""
 
     def __init__(self, params_path: Path | None = None):

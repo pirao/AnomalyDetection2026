@@ -16,10 +16,20 @@ import pandas as pd
 
 MODEL_SCHEMA_VERSION = 1
 
+# Identity axis for the CODE that produces a fitted model. Unlike the git sha,
+# this changes ONLY when you deliberately alter model-fitting semantics (the
+# detector/scorer/preprocessing math, the fingerprint recipe, or the cache
+# schema). Bump it by hand when a re-fit would produce materially different
+# weights; leave it untouched for refactors, renames, docs, or unrelated code
+# changes. This is what lets "same data + same config + same code" dedup
+# survive ordinary commits instead of minting a new version every time.
+MODEL_CODE_VERSION = 1
+
 __all__ = [
     "DEFAULT_CACHE_ROOT",
     "DEFAULT_DATA_DIR",
     "DEFAULT_HYPERPARAMS_PATH",
+    "MODEL_CODE_VERSION",
     "compute_config_hash",
     "data_digest",
     "fit_and_save",
@@ -29,18 +39,12 @@ __all__ = [
     "model_fingerprint",
 ]
 
-# This module lives at src/analysis/mlflow/model_cache.py -> repo root is 3 up.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_CANONICAL_DATA_DIR = _REPO_ROOT / "data" / "raw"
-_LEGACY_DATA_DIR = _REPO_ROOT / "data"
-DEFAULT_DATA_DIR = (
-    _CANONICAL_DATA_DIR
-    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
-    else _LEGACY_DATA_DIR
-)
+# This module lives at src/pipelines/model_cache.py -> repo root is 2 up.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DATA_DIR = _REPO_ROOT / "data" / "raw"
 DEFAULT_HYPERPARAMS_PATH = (
     _REPO_ROOT
-    / "src/sample_processing/model/current/hyperparameters/norm_model_hyperparams.yaml"
+    / "src/anomaly_detection/model/grouped_residual/hyperparameters/norm_model_hyperparams.yaml"
 )
 DEFAULT_CACHE_ROOT = _REPO_ROOT / "cache/models"
 _VERSION_DIR_PATTERN = re.compile(r"^v(?P<version>\d+)$")
@@ -105,15 +109,18 @@ def git_revision(repo_path: Path = _REPO_ROOT) -> dict[str, str]:
         return {"git_sha": "unknown", "git_dirty": "unknown"}
 
 
-def model_fingerprint(data_digest_value: str, config_hash: str, git_sha: str) -> str:
+def model_fingerprint(data_digest_value: str, config_hash: str, code_version: int) -> str:
     """Combine the three change axes (data + config + code) into one identity hash.
 
     Two artifacts with the same fingerprint were produced from the same data,
-    the same config and the same committed code - so a new version would be a
-    duplicate. ``git_dirty`` is deliberately NOT folded in: it is recorded
-    separately as a trust flag, not part of identity.
+    the same config and the same model-code version - so a new version would be
+    a duplicate. The code axis is ``MODEL_CODE_VERSION`` (a manual constant bumped
+    only when the fitted-model semantics change), NOT the git sha: an unrelated
+    commit must not invalidate an otherwise-identical model. The git sha and
+    ``git_dirty`` are recorded separately as provenance / trust tags, never as
+    part of identity.
     """
-    payload = f"{data_digest_value}:{config_hash}:{git_sha}".encode()
+    payload = f"{data_digest_value}:{config_hash}:{code_version}".encode()
     return hashlib.md5(payload).hexdigest()[:12]
 
 
@@ -234,9 +241,9 @@ def _fit_all_scenarios(
     scenario_ids: Iterable[int],
     hyperparams_path: Path,
 ) -> "dict[int, object]":
-    """Fit one AnomalyModel per scenario. Returns {scenario_id: AnomalyModel}."""
-    from analysis.evaluation import df_to_timeseries
-    from sample_processing.model.current.anomaly_model import AnomalyModel
+    """Fit one GroupedResidualDetector per scenario. Returns {scenario_id: GroupedResidualDetector}."""
+    from anomaly_detection.model.grouped_residual.detector import GroupedResidualDetector
+    from offline_analysis.evaluation import df_to_timeseries
 
     models: dict[int, object] = {}
     for sid in scenario_ids:
@@ -251,7 +258,7 @@ def _fit_all_scenarios(
             .sort_values("sampled_at")
             .reset_index(drop=True)
         )
-        model = AnomalyModel(params_path=hyperparams_path, scenario_id=sid)
+        model = GroupedResidualDetector(params_path=hyperparams_path, scenario_id=sid)
         model.fit(df_to_timeseries(fit_df))
         models[int(sid)] = model
         _log(f"  fitted scenario {sid}")
@@ -267,7 +274,7 @@ def fit_and_save(
     notes: str = "",
     skip_if_unchanged: bool = True,
 ) -> int:
-    """Read model YAML, fit one AnomalyModel per scenario, write versioned cache.
+    """Read model YAML, fit one GroupedResidualDetector per scenario, write versioned cache.
 
     Parameters
     ----------
@@ -289,9 +296,9 @@ def fit_and_save(
     skip_if_unchanged :
         When ``True`` (default) and ``version`` is auto-assigned, skip refitting
         and return the existing latest version if its ``fingerprint`` (data +
-        config + git sha) matches the current inputs - avoids minting duplicate
-        versions. A dirty working tree disables the skip: the git sha cannot be
-        trusted, so a fresh version is always created.
+        config + ``MODEL_CODE_VERSION``) matches the current inputs - avoids
+        minting duplicate versions. The git state does not affect this: the git
+        sha is recorded as a provenance tag only, never as part of identity.
 
     Returns
     -------
@@ -312,22 +319,16 @@ def fit_and_save(
     dd = data_digest(data_dir)
     cfg_hash = compute_config_hash(yaml_snapshot)
     git_info = git_revision()
-    fingerprint = model_fingerprint(dd, cfg_hash, git_info["git_sha"])
+    fingerprint = model_fingerprint(dd, cfg_hash, MODEL_CODE_VERSION)
 
     if version is None and skip_if_unchanged:
-        if git_info["git_dirty"] == "True":
+        _latest = max(_existing_cache_versions(cache_root, include_tmp=False), default=0)
+        if _latest and _published_version_meta(cache_root, _latest).get("fingerprint") == fingerprint:
             _log(
-                "Working tree is dirty: git sha is untrustworthy, so a fresh "
-                "version will be created (cannot prove the code is unchanged)."
+                f"No change vs v{_latest} (fingerprint {fingerprint}); skipping "
+                "refit. Pass skip_if_unchanged=False to force a new version."
             )
-        else:
-            _latest = max(_existing_cache_versions(cache_root, include_tmp=False), default=0)
-            if _latest and _published_version_meta(cache_root, _latest).get("fingerprint") == fingerprint:
-                _log(
-                    f"No change vs v{_latest} (fingerprint {fingerprint}); skipping "
-                    "refit. Pass skip_if_unchanged=False to force a new version."
-                )
-                return _latest
+            return _latest
 
     meta_path = cache_root / "meta.json"
     next_version = int(version) if version is not None else _next_cache_version(cache_root)
@@ -397,7 +398,7 @@ def load_fitted_models(
     version: int | str = "latest",
     cache_root: Path | str = DEFAULT_CACHE_ROOT,
 ) -> "tuple[dict[int, object], dict]":
-    """Load pickled AnomalyModel objects from a versioned cache directory.
+    """Load pickled GroupedResidualDetector objects from a versioned cache directory.
 
     Parameters
     ----------
@@ -408,7 +409,7 @@ def load_fitted_models(
 
     Returns
     -------
-    tuple[dict[int, AnomalyModel], dict]
+    tuple[dict[int, GroupedResidualDetector], dict]
         ``(models_dict, meta_dict)`` where ``meta_dict`` contains the YAML
         snapshot and provenance info recorded at fit time.
     """

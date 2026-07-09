@@ -12,12 +12,12 @@ both uptime and downtime are shown (downtime reads near zero - those are the fla
 dips). The labelled incident window is shaded and a red line marks the timestamp
 where the service raised an alert; the caption names the served registry version.
 
-Lives in ``analysis.mlflow`` next to the registry code it demonstrates. Run in an
+Lives in ``pipelines`` next to the registry code it demonstrates. Run in an
 environment with the analysis/notebook stack (mlflow + matplotlib), e.g.
 ``uv run --extra notebooks``:
 
-    python -m analysis.mlflow.deploy_demo --sensor 9
-    python -m analysis.mlflow.deploy_demo --sensor 9 --http http://localhost:8000
+    python -m pipelines.deploy_demo --sensor 9
+    python -m pipelines.deploy_demo --sensor 9 --http http://localhost:8000
 
 Output: ``reports/figures/mlflow/deploy_demo.gif``.
 """
@@ -33,29 +33,16 @@ import numpy as np
 import pandas as pd
 import yaml
 
-# src/analysis/mlflow/deploy_demo.py -> repo root is 3 parents up; src is 2 up.
-_REPO = Path(__file__).resolve().parents[3]
+# src/pipelines/deploy_demo.py -> repo root is 2 parents up; src is 1 up.
+_REPO = Path(__file__).resolve().parents[2]
 _SRC = _REPO / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from sample_processing.serving.registry import REGISTERED_MODEL_NAME  # noqa: E402
+from anomaly_detection.registry.bundle import REGISTERED_MODEL_NAME  # noqa: E402
 
-_CANONICAL_DATA_DIR = _REPO / "data" / "raw"
-_LEGACY_DATA_DIR = _REPO / "data"
-DATA_DIR = (
-    _CANONICAL_DATA_DIR
-    if any(_CANONICAL_DATA_DIR.glob("sensor_data_fit_*.parquet"))
-    else _LEGACY_DATA_DIR
-)
-
-_CANONICAL_LABELS_PATH = _REPO / "data" / "raw" / "labels" / "incidents.yaml"
-_LEGACY_LABELS_PATH = _REPO / "labels" / "incidents.yaml"
-LABELS_PATH = (
-    _CANONICAL_LABELS_PATH
-    if _CANONICAL_LABELS_PATH.exists()
-    else _LEGACY_LABELS_PATH
-)
+DATA_DIR = _REPO / "data" / "raw"
+LABELS_PATH = _REPO / "data" / "raw" / "labels" / "incidents.yaml"
 DEFAULT_OUT = _REPO / "reports" / "figures" / "mlflow" / "deploy_demo.gif"
 
 WINDOW = timedelta(hours=2.0)
@@ -152,7 +139,7 @@ def stream(sensor: int, pred: pd.DataFrame, http: str | None) -> list[pd.Timesta
     else:
         from fastapi.testclient import TestClient
 
-        import sample_processing.api.main as m
+        import anomaly_detection.api.main as m
 
         with TestClient(m.app) as client:  # lifespan loads @production
             if not m._bundle:
@@ -188,17 +175,16 @@ def render(
     import matplotlib
 
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation, PillowWriter
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
-    from analysis.plotting.style import set_plot_style
+    from offline_analysis.plotting.style import set_plot_style
 
     set_plot_style()  # repo-wide Arial rcParams
 
-    nf, npd = len(fit), len(pred)
     x_fit = pd.to_datetime(fit["sampled_at"], utc=True)
     x_pred = pd.to_datetime(pred["sampled_at"], utc=True)
     boundary = x_fit.iloc[-1]

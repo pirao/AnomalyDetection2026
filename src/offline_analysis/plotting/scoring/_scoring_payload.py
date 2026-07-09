@@ -6,7 +6,7 @@ it pre-scores each batch once and reuses that work whenever sigmoid sliders
 the widget responsive:
 
 - ``_fit_cache`` - keyed on (scenario_id, vel_col, accel_col); stores fitted
-  ``SensorModel`` instances so that swapping only sigmoid params does not
+  ``Scorer`` instances so that swapping only sigmoid params does not
   trigger a refit.
 - ``_score_base_cache`` - keyed on ``_ScoreBaseKey``; stores pre-scored
   batches. Alpha/beta/threshold are NOT part of this key, so slider moves
@@ -22,14 +22,17 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from analysis.evaluation import df_to_timeseries, get_incident_spans, iter_time_batches
-from sample_processing.model.current.anomaly_model import load_pipeline_params
-from sample_processing.model.current.normalization import apply_norm_scores, fit_norm_baselines
-from sample_processing.model.current.sensor_model import SensorModel
-from sample_processing.model.scenario_groups import (
+from anomaly_detection.model.grouped_residual.preprocessing import (
+    apply_norm_scores,
+    fit_norm_baselines,
+)
+from anomaly_detection.model.grouped_residual.scoring import Scorer
+from anomaly_detection.model.shared.config import load_pipeline_params
+from anomaly_detection.model.shared.scenario_groups import (
     get_scenario_group_key,
     get_scenario_group_label,
 )
+from offline_analysis.evaluation import df_to_timeseries, get_incident_spans, iter_time_batches
 
 from ._helpers import (
     _ACCEL_COLS,
@@ -42,8 +45,8 @@ from ._helpers import (
 
 # Fit-layer cache: keyed on (scenario_id, vel_col, accel_col) - the only
 # inputs that require a model re-fit. All post-fit params (alpha, beta,
-# threshold, top_k, fusion) run off the cached SensorModel.
-_fit_cache: dict[tuple, SensorModel] = {}
+# threshold, top_k, fusion) run off the cached Scorer.
+_fit_cache: dict[tuple, Scorer] = {}
 
 # Score-base cache: keyed on (_ScoreBaseKey) - stores scored display data
 # and pre-scored batch tuples. Sigmoid params are NOT part of this key, so
@@ -52,9 +55,8 @@ _score_base_cache: dict[Any, dict[str, Any]] = {}
 
 
 def _sigmoid(x: np.ndarray, alpha: float, beta: float) -> np.ndarray:
-    x = np.asarray(x, dtype=float)
-    z = np.clip(alpha * (x - beta), -60.0, 60.0)
-    return 1.0 / (1.0 + np.exp(-z))
+    # Reuse the model's sigmoid so the widget preview matches Scorer exactly.
+    return Scorer._sigmoid(np.asarray(x, dtype=float), alpha, beta)
 
 
 def _solve_alpha_beta_from_two_anchors(
@@ -204,7 +206,7 @@ def _build_score_base(
     _fit_key = (scenario_id, vel_col, accel_col)
     sensor = _fit_cache.get(_fit_key)
     if sensor is None:
-        sensor = SensorModel(is_cyclic=is_cyclic, baseline_scaler="standard")
+        sensor = Scorer(is_cyclic=is_cyclic, baseline_scaler="standard")
         sensor.fit(df_to_timeseries(fit_df_orig, time_col=time_col))
         _fit_cache[_fit_key] = sensor
 

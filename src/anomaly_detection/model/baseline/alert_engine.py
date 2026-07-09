@@ -1,6 +1,6 @@
 """Locking baseline alert engine used by comparison experiments."""
 
-from .interface import AlertDecision, PredictOutput
+from ..shared.interface import AlertDecision, PredictOutput
 
 
 class AlertEngine:
